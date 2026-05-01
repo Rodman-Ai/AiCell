@@ -7,6 +7,9 @@ import { SheetTabs } from "./SheetTabs";
 import { ChartStrip } from "./ChartStrip";
 import { MenuBar, type MenuSpec } from "./MenuBar";
 import { FunctionPicker } from "./FunctionPicker";
+import { FormatToolbar } from "./FormatToolbar";
+import { FindReplace } from "./FindReplace";
+import type { CellFormat } from "@aicell/shared";
 import {
   importSpreadsheetFile,
   exportSheetAsCSV,
@@ -49,6 +52,7 @@ export function App() {
   const [aiEnabled, setAiEnabled] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formulaInputRef = useRef<HTMLInputElement>(null);
 
@@ -190,6 +194,19 @@ export function App() {
     clearRange();
   }, [clearRange]);
 
+  const applyFormatPatch = useCallback(
+    (patch: Partial<CellFormat>) => {
+      api.applyFormat(api.activeSheet.name, selection, patch);
+    },
+    [api, selection]
+  );
+
+  const clearFormatRange = useCallback(() => {
+    api.clearFormat(api.activeSheet.name, selection);
+  }, [api, selection]);
+
+  const anchorFormat = api.getCellFormat(anchor.row, anchor.col);
+
   const insertTodayShortcut = useCallback(() => {
     api.setCell(anchor.row, anchor.col, "=TODAY()");
   }, [api, anchor.row, anchor.col]);
@@ -264,11 +281,27 @@ export function App() {
         if (inEditable) return;
         e.preventDefault();
         selectAll();
+      } else if (mod && (e.key === "f" || e.key === "F")) {
+        if (inEditable) return;
+        e.preventDefault();
+        setFindOpen(true);
+      } else if (mod && (e.key === "b" || e.key === "B") && !e.shiftKey) {
+        if (inEditable) return;
+        e.preventDefault();
+        applyFormatPatch({ bold: !anchorFormat?.bold });
+      } else if (mod && (e.key === "i" || e.key === "I") && !e.shiftKey) {
+        if (inEditable) return;
+        e.preventDefault();
+        applyFormatPatch({ italic: !anchorFormat?.italic });
+      } else if (mod && (e.key === "u" || e.key === "U") && !e.shiftKey) {
+        if (inEditable) return;
+        e.preventDefault();
+        applyFormatPatch({ underline: !anchorFormat?.underline });
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [api, onCopy, onCut, onPaste, insertTodayShortcut, insertNowShortcut, selectAll]);
+  }, [api, onCopy, onCut, onPaste, insertTodayShortcut, insertNowShortcut, selectAll, applyFormatPatch, anchorFormat]);
 
   const triggerImport = () => fileInputRef.current?.click();
 
@@ -318,6 +351,13 @@ export function App() {
         { kind: "item", label: "Paste", shortcut: `${modKey}V`, onClick: () => void onPaste() },
         { kind: "separator" },
         { kind: "item", label: "Clear contents", shortcut: "Del", onClick: onClearSelection },
+        { kind: "separator" },
+        {
+          kind: "item",
+          label: "Find & replace…",
+          shortcut: `${modKey}F`,
+          onClick: () => setFindOpen(true),
+        },
       ],
     },
     {
@@ -328,6 +368,26 @@ export function App() {
           label: panelOpen ? "Hide Ask Claude panel" : "Show Ask Claude panel",
           onClick: () => setPanelOpen((v) => !v),
         },
+      ],
+    },
+    {
+      label: "Format",
+      items: [
+        { kind: "item", label: "Bold", shortcut: `${modKey}B`, onClick: () => applyFormatPatch({ bold: !anchorFormat?.bold }) },
+        { kind: "item", label: "Italic", shortcut: `${modKey}I`, onClick: () => applyFormatPatch({ italic: !anchorFormat?.italic }) },
+        { kind: "item", label: "Underline", shortcut: `${modKey}U`, onClick: () => applyFormatPatch({ underline: !anchorFormat?.underline }) },
+        { kind: "separator" },
+        { kind: "item", label: "Number → General", onClick: () => applyFormatPatch({ numberFmt: "general" }) },
+        { kind: "item", label: "Number → Number", onClick: () => applyFormatPatch({ numberFmt: "number" }) },
+        { kind: "item", label: "Number → Currency", onClick: () => applyFormatPatch({ numberFmt: "currency" }) },
+        { kind: "item", label: "Number → Percent", onClick: () => applyFormatPatch({ numberFmt: "percent" }) },
+        { kind: "item", label: "Number → Date", onClick: () => applyFormatPatch({ numberFmt: "date" }) },
+        { kind: "separator" },
+        { kind: "item", label: "Align left", onClick: () => applyFormatPatch({ align: "left" }) },
+        { kind: "item", label: "Align center", onClick: () => applyFormatPatch({ align: "center" }) },
+        { kind: "item", label: "Align right", onClick: () => applyFormatPatch({ align: "right" }) },
+        { kind: "separator" },
+        { kind: "item", label: "Clear formatting", onClick: clearFormatRange },
       ],
     },
     {
@@ -479,6 +539,11 @@ export function App() {
         <span className="status">{status}</span>
       </div>
       <MenuBar menus={menus} />
+      <FormatToolbar
+        current={anchorFormat}
+        onPatch={applyFormatPatch}
+        onClear={clearFormatRange}
+      />
       <div className="formula-bar">
         <span className="addr" title={cellCount > 1 ? rangeLabel : undefined}>
           {rangeLabel}
@@ -530,6 +595,16 @@ export function App() {
             setPickerOpen(false);
             insertFunctionAtSelection(entry.name);
           }}
+        />
+      )}
+      {findOpen && (
+        <FindReplace
+          sheet={api.activeSheet}
+          onClose={() => setFindOpen(false)}
+          onJumpTo={(row, col) =>
+            setSelection({ startRow: row, startCol: col, endRow: row, endCol: col })
+          }
+          onApply={(sheetName, edits) => api.setCellsOnSheetBatch(sheetName, edits)}
         />
       )}
     </div>

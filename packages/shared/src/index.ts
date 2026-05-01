@@ -9,9 +9,33 @@ export type CellAddress = {
 
 export type CellValue = string | number | boolean | null;
 
+export type NumberFormat =
+  | "general"
+  | "number"
+  | "currency"
+  | "percent"
+  | "date"
+  | "datetime";
+
+export type CellFormat = {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  align?: "left" | "center" | "right";
+  /** CSS color string for text. */
+  color?: string;
+  /** CSS color string for cell background. */
+  bg?: string;
+  /** Number-format preset; "general" or undefined uses HyperFormula's raw value. */
+  numberFmt?: NumberFormat;
+  /** Decimal places for "number", "currency", and "percent". Defaults to 2. */
+  decimals?: number;
+};
+
 export type Cell = {
   /** Raw user input — formulas start with "=" */
   raw: string;
+  format?: CellFormat;
 };
 
 export type ChartType = "bar" | "line" | "area" | "pie" | "scatter";
