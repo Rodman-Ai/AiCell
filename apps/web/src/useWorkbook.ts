@@ -16,6 +16,7 @@ export type WorkbookApi = {
   getRaw: (row: number, col: number) => string;
   getComputed: (row: number, col: number) => CellComputed;
   loadSheet: (sheet: Sheet) => void;
+  replaceWorkbook: (wb: Workbook) => void;
 };
 
 const newBlankSheet = (): Sheet => ({
@@ -26,18 +27,25 @@ const newBlankSheet = (): Sheet => ({
   colCount: 26,
 });
 
+export const newBlankWorkbook = (id: string, name = "Untitled"): Workbook => ({
+  id,
+  name,
+  sheets: [newBlankSheet()],
+});
+
 export function useWorkbook(): WorkbookApi {
   const engineRef = useRef<CalcEngine | null>(null);
   if (engineRef.current === null) {
     engineRef.current = new CalcEngine();
   }
-  const engine = engineRef.current;
+  const getEngine = () => {
+    if (!engineRef.current) throw new Error("CalcEngine not initialized");
+    return engineRef.current;
+  };
 
-  const [workbook, setWorkbook] = useState<Workbook>(() => ({
-    id: "wb-1",
-    name: "Untitled",
-    sheets: [newBlankSheet()],
-  }));
+  const [workbook, setWorkbook] = useState<Workbook>(() =>
+    newBlankWorkbook("wb-default")
+  );
   const [activeSheetId, setActiveSheetId] = useState<string>("sheet-1");
   const [version, setVersion] = useState(0);
 
@@ -46,20 +54,21 @@ export function useWorkbook(): WorkbookApi {
     [workbook, activeSheetId]
   );
 
-  // Initial load
+  // Initial load of the default workbook into the engine
   const initLoadedRef = useRef(false);
   useEffect(() => {
     if (initLoadedRef.current) return;
     initLoadedRef.current = true;
-    engine.loadSheet(activeSheet);
+    getEngine().loadSheet(activeSheet);
     setVersion((v) => v + 1);
-  }, [engine, activeSheet]);
+  }, [activeSheet]);
 
   useEffect(() => {
     return () => {
-      engine.destroy();
+      engineRef.current?.destroy();
+      engineRef.current = null;
     };
-  }, [engine]);
+  }, []);
 
   const setCell = useCallback(
     (row: number, col: number, raw: string) => {
@@ -80,10 +89,10 @@ export function useWorkbook(): WorkbookApi {
         return { ...wb, sheets };
       });
       const sheetName = activeSheet.name;
-      engine.setCell(sheetName, row, col, raw);
+      getEngine().setCell(sheetName, row, col, raw);
       setVersion((v) => v + 1);
     },
-    [activeSheetId, activeSheet.name, engine]
+    [activeSheetId, activeSheet.name]
   );
 
   const getRaw = useCallback(
@@ -96,28 +105,35 @@ export function useWorkbook(): WorkbookApi {
 
   const getComputed = useCallback(
     (row: number, col: number): CellComputed => {
-      // version is read so React knows to re-call after recalc
       void version;
-      return engine.getValue(activeSheet.name, row, col);
+      return getEngine().getValue(activeSheet.name, row, col);
     },
-    [engine, activeSheet.name, version]
+    [activeSheet.name, version]
   );
 
-  const loadSheet = useCallback(
-    (sheet: Sheet) => {
-      engine.loadSheet(sheet);
-      setWorkbook((wb) => {
-        const exists = wb.sheets.some((s) => s.id === sheet.id);
-        const sheets = exists
-          ? wb.sheets.map((s) => (s.id === sheet.id ? sheet : s))
-          : [...wb.sheets, sheet];
-        return { ...wb, sheets };
-      });
-      setActiveSheetId(sheet.id);
-      setVersion((v) => v + 1);
-    },
-    [engine]
-  );
+  const loadSheet = useCallback((sheet: Sheet) => {
+    getEngine().loadSheet(sheet);
+    setWorkbook((wb) => {
+      const exists = wb.sheets.some((s) => s.id === sheet.id);
+      const sheets = exists
+        ? wb.sheets.map((s) => (s.id === sheet.id ? sheet : s))
+        : [...wb.sheets, sheet];
+      return { ...wb, sheets };
+    });
+    setActiveSheetId(sheet.id);
+    setVersion((v) => v + 1);
+  }, []);
+
+  const replaceWorkbook = useCallback((wb: Workbook) => {
+    engineRef.current?.destroy();
+    engineRef.current = new CalcEngine();
+    for (const s of wb.sheets) {
+      engineRef.current.loadSheet(s);
+    }
+    setWorkbook(wb);
+    setActiveSheetId(wb.sheets[0]?.id ?? "sheet-1");
+    setVersion((v) => v + 1);
+  }, []);
 
   return {
     workbook,
@@ -128,5 +144,6 @@ export function useWorkbook(): WorkbookApi {
     getRaw,
     getComputed,
     loadSheet,
+    replaceWorkbook,
   };
 }

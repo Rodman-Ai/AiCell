@@ -7,6 +7,12 @@ build/
 .turbo/
 .vite/
 
+# AiCell local data
+.aicell-data/
+.aicell-data-*/
+**/.aicell-data/
+**/.aicell-data-*/
+
 # env
 .env
 .env.local
