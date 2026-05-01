@@ -159,7 +159,11 @@ body,
   font-weight: 600;
 }
 
-.grid-cell.selected {
+.grid-cell.in-range {
+  background: rgba(212, 228, 255, 0.55);
+}
+
+.grid-cell.anchor {
   background: var(--aicell-selected);
   outline: 2px solid var(--aicell-selected-border);
   outline-offset: -2px;
@@ -203,6 +207,27 @@ body,
   color: var(--aicell-header-fg);
   justify-content: center;
   font-weight: 500;
+  position: relative;
+  cursor: pointer;
+}
+
+.col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+}
+
+.col-resize-handle:hover {
+  background: var(--aicell-selected-border);
+  opacity: 0.4;
+}
+
+.grid-row-header {
+  cursor: pointer;
 }
 
 .grid-col-header.corner {

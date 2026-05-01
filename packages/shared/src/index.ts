@@ -33,6 +33,8 @@ export type Sheet = {
   colCount: number;
   /** Charts attached to this sheet. Optional for backwards compat with older workbooks. */
   charts?: ChartSpec[];
+  /** Per-column widths in pixels. Sparse — missing entries use the default width. */
+  colWidths?: Record<number, number>;
 };
 
 export type Workbook = {
