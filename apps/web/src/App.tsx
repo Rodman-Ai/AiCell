@@ -6,7 +6,7 @@ import { SidePanel } from "./SidePanel";
 import { SheetTabs } from "./SheetTabs";
 import { ChartStrip } from "./ChartStrip";
 import { importSpreadsheetFile } from "./csv";
-import { listWorkbooks, loadWorkbook, saveWorkbook, getHealth } from "./api";
+import { listWorkbooks, loadWorkbook, saveWorkbook, getHealth, isOffline } from "./api";
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
@@ -27,10 +27,13 @@ export function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // --- Boot: probe AI availability + load most-recent workbook ---
+  // In demo mode (VITE_API_BASE empty, e.g., GitHub Pages), skip every API
+  // call and run with an in-memory workbook.
   const bootedRef = useRef(false);
   useEffect(() => {
     if (bootedRef.current) return;
     bootedRef.current = true;
+    if (isOffline) return;
     (async () => {
       try {
         const health = await getHealth();
@@ -58,7 +61,7 @@ export function App() {
   const lastSavedRef = useRef<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (bootError) return;
+    if (bootError || isOffline) return;
     const serialized = JSON.stringify(api.workbook);
     if (lastSavedRef.current === serialized) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -104,11 +107,14 @@ export function App() {
 
   const selRaw = api.getRaw(selection.row, selection.col);
   const selComputed = api.getComputed(selection.row, selection.col);
+  const baseStatus = `${api.activeSheet.name} · ${api.activeSheet.rowCount.toLocaleString()} rows × ${api.activeSheet.colCount} cols`;
   const status = bootError
     ? bootError
     : busy
       ? "Importing…"
-      : `${api.activeSheet.name} · ${api.activeSheet.rowCount.toLocaleString()} rows × ${api.activeSheet.colCount} cols`;
+      : isOffline
+        ? `Demo mode (no backend) · ${baseStatus}`
+        : baseStatus;
 
   return (
     <div className={`app${panelOpen ? " with-panel" : ""}`}>

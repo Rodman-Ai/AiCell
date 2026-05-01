@@ -1,7 +1,15 @@
 import type { Workbook } from "@aicell/shared";
 import type { CellFn } from "@aicell/calc";
 
-const BASE = "/api";
+/**
+ * Build-time API base. Default `/api` works in dev (proxied to localhost:3000)
+ * and any deploy that fronts the API at the same origin. To deploy a static-only
+ * build (e.g., to GitHub Pages with no backend), build with VITE_API_BASE="" —
+ * the app then runs in demo mode with no persistence and no AI calls.
+ */
+const RAW_BASE = import.meta.env.VITE_API_BASE;
+const BASE = RAW_BASE === undefined ? "/api" : RAW_BASE;
+export const isOffline = BASE === "";
 
 export type WorkbookSummary = { id: string; name: string; updatedAt: number };
 

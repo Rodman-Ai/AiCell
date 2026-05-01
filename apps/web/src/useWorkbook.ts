@@ -6,10 +6,14 @@ import {
   type ChartSpec,
   cellKey,
 } from "@aicell/shared";
-import { callAiCell } from "./api";
+import { callAiCell, isOffline } from "./api";
 
 // Wire the AI runner once at module load — every CalcEngine shares the registry.
-aiRegistry.setRunner(({ fn, prompt, args }) => callAiCell({ fn, prompt, args }));
+// In offline/demo mode (no backend), leave the runner unset so AI cell calls
+// return the "#AI_DISABLED" sentinel instead of failing fetches.
+if (!isOffline) {
+  aiRegistry.setRunner(({ fn, prompt, args }) => callAiCell({ fn, prompt, args }));
+}
 
 export type WorkbookApi = {
   workbook: Workbook;
