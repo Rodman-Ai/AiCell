@@ -28,6 +28,7 @@ export type WorkbookApi = {
   setCell: (row: number, col: number, raw: string) => void;
   getRaw: (row: number, col: number) => string;
   getComputed: (row: number, col: number) => CellComputed;
+  getComputedOnSheet: (sheetName: string, row: number, col: number) => CellComputed;
   loadSheet: (sheet: Sheet) => void;
   replaceWorkbook: (wb: Workbook) => void;
   addSheet: () => void;
@@ -184,6 +185,18 @@ export function useWorkbook(): WorkbookApi {
       return getEngine().getValue(activeSheet.name, row, col);
     },
     [activeSheet.name, version]
+  );
+
+  const getComputedOnSheet = useCallback(
+    (sheetName: string, row: number, col: number): CellComputed => {
+      void version;
+      try {
+        return getEngine().getValue(sheetName, row, col);
+      } catch {
+        return { value: null };
+      }
+    },
+    [version]
   );
 
   const loadSheet = useCallback(
@@ -569,6 +582,7 @@ export function useWorkbook(): WorkbookApi {
     setCell,
     getRaw,
     getComputed,
+    getComputedOnSheet,
     loadSheet,
     replaceWorkbook,
     addSheet,

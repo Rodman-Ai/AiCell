@@ -21,14 +21,17 @@ type Props = {
   api: WorkbookApi;
   selection: Range;
   onSelect: (sel: Range) => void;
+  onSortColumn: (col: number, ascending: boolean) => void;
+  onRemoveDupesInColumn: (col: number) => void;
 };
 
-export function Grid({ api, selection, onSelect }: Props) {
+export function Grid({ api, selection, onSelect, onSortColumn, onRemoveDupesInColumn }: Props) {
   const { activeSheet, getRaw, getComputed, getCellFormat, getCellComment, setCell, version, setColWidth } = api;
   const parentRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<{ row: number; col: number; draft: string } | null>(null);
   const [resizing, setResizing] = useState<{ col: number; startX: number; startWidth: number } | null>(null);
   const [draftWidth, setDraftWidth] = useState<{ col: number; width: number } | null>(null);
+  const [chevronCol, setChevronCol] = useState<number | null>(null);
 
   const widthOf = useCallback(
     (col: number): number => {
@@ -248,6 +251,35 @@ export function Grid({ api, selection, onSelect }: Props) {
             onClick={() => onColumnHeaderClick(c)}
           >
             <span>{colLetters(c)}</span>
+            <button
+              type="button"
+              className="col-chevron"
+              aria-label={`Column ${colLetters(c)} actions`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setChevronCol((cur) => (cur === c ? null : c));
+              }}
+            >
+              ▾
+            </button>
+            {chevronCol === c && (
+              <ColChevronPopup
+                col={c}
+                onClose={() => setChevronCol(null)}
+                onSortAsc={() => {
+                  onSortColumn(c, true);
+                  setChevronCol(null);
+                }}
+                onSortDesc={() => {
+                  onSortColumn(c, false);
+                  setChevronCol(null);
+                }}
+                onDedupe={() => {
+                  onRemoveDupesInColumn(c);
+                  setChevronCol(null);
+                }}
+              />
+            )}
             <span
               className="col-resize-handle"
               onMouseDown={(e) => {
@@ -424,6 +456,46 @@ function CellView({
       onDoubleClick={() => onBeginEdit(row, col)}
     >
       {display}
+    </div>
+  );
+}
+
+function ColChevronPopup({
+  col,
+  onClose,
+  onSortAsc,
+  onSortDesc,
+  onDedupe,
+}: {
+  col: number;
+  onClose: () => void;
+  onSortAsc: () => void;
+  onSortDesc: () => void;
+  onDedupe: () => void;
+}) {
+  void col;
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+  return (
+    <div className="col-chevron-popup" ref={ref} onClick={(e) => e.stopPropagation()}>
+      <button type="button" onClick={onSortAsc}>Sort A → Z</button>
+      <button type="button" onClick={onSortDesc}>Sort Z → A</button>
+      <hr />
+      <button type="button" onClick={onDedupe}>Remove duplicates</button>
+      <button type="button" disabled title="Coming in a follow-up">Filter…</button>
     </div>
   );
 }
