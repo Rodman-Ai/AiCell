@@ -5,6 +5,8 @@ import {
   type Sheet,
   type ChartSpec,
   type CellFormat,
+  type CellComment,
+  type ConditionalRule,
   cellKey,
 } from "@aicell/shared";
 import type { Range } from "./clipboard";
@@ -42,6 +44,11 @@ export type WorkbookApi = {
   /** Remove all formatting from every cell in the range. One undo step. */
   clearFormat: (sheetName: string, range: Range) => void;
   getCellFormat: (row: number, col: number) => CellFormat | undefined;
+  getCellComment: (row: number, col: number) => CellComment | undefined;
+  setCellComment: (sheetName: string, row: number, col: number, text: string, author?: string) => void;
+  clearCellComment: (sheetName: string, row: number, col: number) => void;
+  addConditionalRule: (sheetName: string, rule: ConditionalRule) => void;
+  removeConditionalRule: (sheetName: string, ruleId: string) => void;
   /** Undo / redo over workbook snapshots. */
   undo: () => void;
   redo: () => void;
@@ -424,6 +431,91 @@ export function useWorkbook(): WorkbookApi {
     [activeSheet]
   );
 
+  const getCellComment = useCallback(
+    (row: number, col: number): CellComment | undefined => {
+      return activeSheet.cells[cellKey(row, col)]?.comment;
+    },
+    [activeSheet]
+  );
+
+  const setCellComment = useCallback(
+    (sheetName: string, row: number, col: number, text: string, author?: string) => {
+      pushHistory();
+      const key = cellKey(row, col);
+      const comment: CellComment = { text, author, ts: Date.now() };
+      setWorkbook((wb) => {
+        const sheets = wb.sheets.map((s) => {
+          if (s.name !== sheetName) return s;
+          const cells = { ...s.cells };
+          const existing = cells[key];
+          cells[key] = existing ? { ...existing, comment } : { raw: "", comment };
+          return { ...s, cells };
+        });
+        return { ...wb, sheets };
+      });
+      setVersion((v) => v + 1);
+    },
+    [pushHistory]
+  );
+
+  const clearCellComment = useCallback(
+    (sheetName: string, row: number, col: number) => {
+      pushHistory();
+      const key = cellKey(row, col);
+      setWorkbook((wb) => {
+        const sheets = wb.sheets.map((s) => {
+          if (s.name !== sheetName) return s;
+          const cells = { ...s.cells };
+          const existing = cells[key];
+          if (!existing) return s;
+          if (existing.raw === "" && !existing.format) {
+            delete cells[key];
+          } else {
+            const next = { ...existing };
+            delete next.comment;
+            cells[key] = next;
+          }
+          return { ...s, cells };
+        });
+        return { ...wb, sheets };
+      });
+      setVersion((v) => v + 1);
+    },
+    [pushHistory]
+  );
+
+  const addConditionalRule = useCallback(
+    (sheetName: string, rule: ConditionalRule) => {
+      pushHistory();
+      setWorkbook((wb) => {
+        const sheets = wb.sheets.map((s) => {
+          if (s.name !== sheetName) return s;
+          const conditionalRules = [...(s.conditionalRules ?? []), rule];
+          return { ...s, conditionalRules };
+        });
+        return { ...wb, sheets };
+      });
+      setVersion((v) => v + 1);
+    },
+    [pushHistory]
+  );
+
+  const removeConditionalRule = useCallback(
+    (sheetName: string, ruleId: string) => {
+      pushHistory();
+      setWorkbook((wb) => {
+        const sheets = wb.sheets.map((s) => {
+          if (s.name !== sheetName) return s;
+          const conditionalRules = (s.conditionalRules ?? []).filter((r) => r.id !== ruleId);
+          return { ...s, conditionalRules };
+        });
+        return { ...wb, sheets };
+      });
+      setVersion((v) => v + 1);
+    },
+    [pushHistory]
+  );
+
   const setColWidth = useCallback(
     (sheetName: string, col: number, width: number) => {
       pushHistory();
@@ -489,6 +581,11 @@ export function useWorkbook(): WorkbookApi {
     applyFormat,
     clearFormat,
     getCellFormat,
+    getCellComment,
+    setCellComment,
+    clearCellComment,
+    addConditionalRule,
+    removeConditionalRule,
     undo,
     redo,
     canUndo,
