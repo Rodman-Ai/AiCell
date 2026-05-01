@@ -5,11 +5,14 @@ import { FileStore, type WorkbookStore } from "./storage";
 import type { ClaudeClient } from "./ai/client";
 import { runCellFn, type CellRequest, type CellFn } from "./ai/cell";
 import { runChat, type ChatRequest } from "./ai/chat";
+import { runAgent, type AgentLLM } from "./ai/agent";
 
 export type AppDeps = {
   store: WorkbookStore;
-  /** Optional — if absent, AI endpoints return 503. */
+  /** Optional — if absent, /ai/cell and /ai/chat return 503. */
   claude?: ClaudeClient | null;
+  /** Optional — if absent, /ai/agent returns 503. */
+  agent?: AgentLLM | null;
 };
 
 const VALID_FNS: ReadonlySet<string> = new Set([
@@ -28,7 +31,7 @@ export function createApp(deps: AppDeps) {
   app.use("*", cors({ origin: (origin) => origin ?? "*" }));
 
   app.get("/health", (c) =>
-    c.json({ ok: true, ai: !!deps.claude })
+    c.json({ ok: true, ai: !!deps.claude, agent: !!deps.agent })
   );
 
   app.get("/workbooks", async (c) => {
@@ -104,6 +107,30 @@ export function createApp(deps: AppDeps) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return c.json({ error: "ai_failed", message: msg }, 502);
+    }
+  });
+
+  app.post("/ai/agent", async (c) => {
+    if (!deps.agent) return c.json({ error: "ai_disabled" }, 503);
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid_json" }, 400);
+    }
+    const req = body as { messages?: unknown; workbook?: Workbook };
+    if (!Array.isArray(req.messages) || req.messages.length === 0) {
+      return c.json({ error: "invalid_messages" }, 400);
+    }
+    try {
+      const out = await runAgent(deps.agent, {
+        messages: req.messages as Array<{ role: "user" | "assistant"; content: string }>,
+        workbook: req.workbook,
+      });
+      return c.json(out);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return c.json({ error: "agent_failed", message: msg }, 502);
     }
   });
 

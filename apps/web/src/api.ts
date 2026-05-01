@@ -68,3 +68,32 @@ export async function callAiChat(req: {
   const body = (await res.json()) as { reply: string };
   return body.reply;
 }
+
+export type ChartType = "bar" | "line" | "area" | "pie" | "scatter";
+
+export type PlanStep =
+  | { tool: "set_cell"; args: { sheet: string; row: number; col: number; raw: string } }
+  | { tool: "add_sheet"; args: { name: string } }
+  | {
+      tool: "create_chart";
+      args: { sheet: string; title: string; type: ChartType; range: string };
+    };
+
+export type AgentResult = {
+  reply: string;
+  plan: PlanStep[];
+};
+
+export async function callAiAgent(req: {
+  messages: ChatTurn[];
+  workbook?: Workbook;
+}): Promise<AgentResult> {
+  const res = await fetch(`${BASE}/ai/agent`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (res.status === 503) throw new Error("AI is not configured (no API key)");
+  if (!res.ok) throw new Error(`ai/agent failed: ${res.status}`);
+  return (await res.json()) as AgentResult;
+}

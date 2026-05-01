@@ -38,7 +38,7 @@ describe("API", () => {
   it("GET /health returns ok", async () => {
     const res = await app.request("/health");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, ai: false });
+    expect(await res.json()).toEqual({ ok: true, ai: false, agent: false });
   });
 
   it("GET /workbooks returns empty list initially", async () => {
@@ -194,10 +194,10 @@ describe("AI endpoints", () => {
   it("/health reports ai status", async () => {
     const enabled = createApp({ store: new FileStore(dir), claude: fakeClaude() });
     const r1 = await enabled.request("/health");
-    expect(await r1.json()).toEqual({ ok: true, ai: true });
+    expect(await r1.json()).toEqual({ ok: true, ai: true, agent: false });
 
     const disabled = createApp({ store: new FileStore(dir) });
     const r2 = await disabled.request("/health");
-    expect(await r2.json()).toEqual({ ok: true, ai: false });
+    expect(await r2.json()).toEqual({ ok: true, ai: false, agent: false });
   });
 });
