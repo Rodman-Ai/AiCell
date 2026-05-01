@@ -3,7 +3,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp, FileStore } from "./app";
+import type { ClaudeClient } from "./ai/client";
 import type { Workbook } from "@aicell/shared";
+
+const fakeClaude = (canned = "MOCK"): ClaudeClient => ({
+  async complete() {
+    return canned;
+  },
+});
 
 const sampleWorkbook = (id = "wb-test"): Workbook => ({
   id,
@@ -31,7 +38,7 @@ describe("API", () => {
   it("GET /health returns ok", async () => {
     const res = await app.request("/health");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
+    expect(await res.json()).toEqual({ ok: true, ai: false });
   });
 
   it("GET /workbooks returns empty list initially", async () => {
@@ -97,5 +104,100 @@ describe("API", () => {
   // cleanup
   it.runIf(true)("cleans up tmp dir", async () => {
     await rm(dir, { recursive: true, force: true });
+  });
+});
+
+describe("AI endpoints", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "aicell-ai-test-"));
+  });
+
+  it("/ai/cell returns 503 when no claude client is configured", async () => {
+    const app = createApp({ store: new FileStore(dir) });
+    const res = await app.request("/ai/cell", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ fn: "AI", prompt: "hi" }),
+    });
+    expect(res.status).toBe(503);
+  });
+
+  it("/ai/cell rejects unknown function names", async () => {
+    const app = createApp({ store: new FileStore(dir), claude: fakeClaude() });
+    const res = await app.request("/ai/cell", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ fn: "ROGUE", prompt: "hi" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("/ai/cell happy path returns the value", async () => {
+    const app = createApp({
+      store: new FileStore(dir),
+      claude: fakeClaude("positive"),
+    });
+    const res = await app.request("/ai/cell", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        fn: "CLASSIFY",
+        prompt: "I love this!",
+        args: ["positive", "negative", "neutral"],
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ value: "positive" });
+  });
+
+  it("/ai/chat returns 503 when AI disabled", async () => {
+    const app = createApp({ store: new FileStore(dir) });
+    const res = await app.request("/ai/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
+    });
+    expect(res.status).toBe(503);
+  });
+
+  it("/ai/chat happy path returns reply", async () => {
+    const app = createApp({
+      store: new FileStore(dir),
+      claude: fakeClaude("Sure, here's a P&L."),
+    });
+    const res = await app.request("/ai/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ role: "user", content: "Build a P&L" }],
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ reply: "Sure, here's a P&L." });
+  });
+
+  it("/ai/chat rejects empty messages", async () => {
+    const app = createApp({
+      store: new FileStore(dir),
+      claude: fakeClaude(),
+    });
+    const res = await app.request("/ai/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messages: [] }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("/health reports ai status", async () => {
+    const enabled = createApp({ store: new FileStore(dir), claude: fakeClaude() });
+    const r1 = await enabled.request("/health");
+    expect(await r1.json()).toEqual({ ok: true, ai: true });
+
+    const disabled = createApp({ store: new FileStore(dir) });
+    const r2 = await disabled.request("/health");
+    expect(await r2.json()).toEqual({ ok: true, ai: false });
   });
 });

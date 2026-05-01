@@ -1,10 +1,15 @@
 import { HyperFormula, type RawCellContent } from "hyperformula";
 import type { Sheet, CellValue } from "@aicell/shared";
+import { ensureAIPluginRegistered, aiRegistry } from "./ai-plugin";
 
 export type CellComputed = {
   value: CellValue;
   error?: string;
 };
+
+export { aiRegistry } from "./ai-plugin";
+export type { AIRunner, CellFn } from "./ai-plugin";
+export { AI_LOADING } from "./ai-plugin";
 
 /**
  * Thin wrapper around HyperFormula for a single workbook.
@@ -15,9 +20,21 @@ export class CalcEngine {
   private sheetIdByName = new Map<string, number>();
 
   constructor() {
+    ensureAIPluginRegistered();
     this.hf = HyperFormula.buildEmpty({
       licenseKey: "gpl-v3",
+      language: "enGB",
     });
+  }
+
+  /** Force HyperFormula to re-evaluate every cell — used when the AI cache updates. */
+  recalculate(): void {
+    this.hf.rebuildAndRecalculate();
+  }
+
+  /** For host apps to subscribe to cache invalidation. */
+  onAIUpdate(fn: () => void): () => void {
+    return aiRegistry.subscribe(fn);
   }
 
   loadSheet(sheet: Sheet): void {

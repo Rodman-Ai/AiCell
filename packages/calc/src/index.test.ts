@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { CalcEngine } from "./index";
+import { describe, it, expect, beforeEach } from "vitest";
+import { CalcEngine, aiRegistry, AI_LOADING } from "./index";
 import type { Sheet } from "@aicell/shared";
 
 const blankSheet = (): Sheet => ({
@@ -88,6 +88,79 @@ describe("CalcEngine", () => {
     expect(e.getValue("Sheet1", 0, 0).value).toBe(99);
     e.setCell("Sheet1", 0, 0, "");
     expect(e.getValue("Sheet1", 0, 0).value).toBeNull();
+    e.destroy();
+  });
+});
+
+describe("AI cell functions", () => {
+  beforeEach(() => {
+    aiRegistry.clear();
+    aiRegistry.setRunner(null);
+  });
+
+  it("returns AI_LOADING on first evaluation, then the resolved value after recalc", async () => {
+    aiRegistry.setRunner(async ({ fn, prompt }) => {
+      if (fn === "CLASSIFY") return "positive";
+      return `[${fn}] ${prompt}`;
+    });
+
+    const e = new CalcEngine();
+    e.loadSheet(blankSheet());
+    e.setCell("Sheet1", 0, 0, "I love this!");
+    e.setCell("Sheet1", 0, 1, '=CLASSIFY(A1, "positive,negative,neutral")');
+
+    expect(e.getValue("Sheet1", 0, 1).value).toBe(AI_LOADING);
+
+    // Wait for the runner promise + cache update
+    await new Promise((r) => setTimeout(r, 5));
+    e.recalculate();
+
+    expect(e.getValue("Sheet1", 0, 1).value).toBe("positive");
+    e.destroy();
+  });
+
+  it("reuses cached result across cells with identical args", async () => {
+    let callCount = 0;
+    aiRegistry.setRunner(async () => {
+      callCount++;
+      return "neutral";
+    });
+
+    const e = new CalcEngine();
+    e.loadSheet(blankSheet());
+    e.setCell("Sheet1", 0, 0, '=SENTIMENT("hello world")');
+    e.setCell("Sheet1", 0, 1, '=SENTIMENT("hello world")');
+    e.setCell("Sheet1", 0, 2, '=SENTIMENT("hello world")');
+
+    await new Promise((r) => setTimeout(r, 5));
+    e.recalculate();
+
+    expect(e.getValue("Sheet1", 0, 0).value).toBe("neutral");
+    expect(e.getValue("Sheet1", 0, 1).value).toBe("neutral");
+    expect(e.getValue("Sheet1", 0, 2).value).toBe("neutral");
+    expect(callCount).toBe(1);
+    e.destroy();
+  });
+
+  it("returns #AI_DISABLED when no runner is configured", () => {
+    const e = new CalcEngine();
+    e.loadSheet(blankSheet());
+    e.setCell("Sheet1", 0, 0, '=AI("anything")');
+    expect(e.getValue("Sheet1", 0, 0).value).toBe("#AI_DISABLED");
+    e.destroy();
+  });
+
+  it("propagates runner errors as cell error strings", async () => {
+    aiRegistry.setRunner(async () => {
+      throw new Error("rate limited");
+    });
+    const e = new CalcEngine();
+    e.loadSheet(blankSheet());
+    e.setCell("Sheet1", 0, 0, '=SUMMARIZE("blah")');
+    expect(e.getValue("Sheet1", 0, 0).value).toBe(AI_LOADING);
+    await new Promise((r) => setTimeout(r, 5));
+    e.recalculate();
+    expect(String(e.getValue("Sheet1", 0, 0).value)).toContain("#AI! rate limited");
     e.destroy();
   });
 });

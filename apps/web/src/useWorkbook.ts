@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { CalcEngine, type CellComputed } from "@aicell/calc";
+import { CalcEngine, aiRegistry, type CellComputed } from "@aicell/calc";
 import {
   type Workbook,
   type Sheet,
   cellKey,
 } from "@aicell/shared";
+import { callAiCell } from "./api";
+
+// Wire the AI runner once at module load — every CalcEngine shares the registry.
+aiRegistry.setRunner(({ fn, prompt, args }) => callAiCell({ fn, prompt, args }));
 
 export type WorkbookApi = {
   workbook: Workbook;
@@ -17,6 +21,7 @@ export type WorkbookApi = {
   getComputed: (row: number, col: number) => CellComputed;
   loadSheet: (sheet: Sheet) => void;
   replaceWorkbook: (wb: Workbook) => void;
+  addSheet: () => void;
 };
 
 const newBlankSheet = (): Sheet => ({
@@ -62,6 +67,14 @@ export function useWorkbook(): WorkbookApi {
     getEngine().loadSheet(activeSheet);
     setVersion((v) => v + 1);
   }, [activeSheet]);
+
+  // When an AI request resolves, re-run HF and bump the version so the grid re-renders.
+  useEffect(() => {
+    return aiRegistry.subscribe(() => {
+      engineRef.current?.recalculate();
+      setVersion((v) => v + 1);
+    });
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -135,6 +148,19 @@ export function useWorkbook(): WorkbookApi {
     setVersion((v) => v + 1);
   }, []);
 
+  const addSheet = useCallback(() => {
+    setWorkbook((wb) => {
+      const n = wb.sheets.length + 1;
+      const id = `sheet-${Date.now()}`;
+      const name = `Sheet${n}`;
+      const sheet: Sheet = { id, name, cells: {}, rowCount: 1000, colCount: 26 };
+      getEngine().loadSheet(sheet);
+      setActiveSheetId(id);
+      setVersion((v) => v + 1);
+      return { ...wb, sheets: [...wb.sheets, sheet] };
+    });
+  }, []);
+
   return {
     workbook,
     activeSheet,
@@ -145,5 +171,6 @@ export function useWorkbook(): WorkbookApi {
     getComputed,
     loadSheet,
     replaceWorkbook,
+    addSheet,
   };
 }

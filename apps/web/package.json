@@ -15,7 +15,8 @@
     "@tanstack/react-virtual": "^3.10.8",
     "papaparse": "^5.4.1",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/papaparse": "^5.3.15",
