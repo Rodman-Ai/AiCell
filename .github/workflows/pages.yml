@@ -44,6 +44,16 @@ jobs:
       - name: Test
         run: pnpm -r test
 
+      # Reconfigure the repo's Pages source to "GitHub Actions" on every run.
+      # If this is the first deploy, `enablement: true` creates the Pages site.
+      # If the source was previously set to "Deploy from a branch" (which
+      # serves the README.md as plain text), this step flips it back to
+      # GitHub Actions so the workflow's artifact is what actually gets served.
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - name: Build web app for Pages
         env:
           # Project-page base path. If you fork to a different repo name,
