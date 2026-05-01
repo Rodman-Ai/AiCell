@@ -76,6 +76,22 @@ AiCell wins by combining what no incumbent has stitched together:
 4. **Real-time collab UX** at Sheets-level quality (Yjs CRDT, multi-cursor, follow-mode, version diff).
 5. **Cleanest in-cell AI** — `=AI()`, `=CLASSIFY()`, `=EXTRACT()`, `=SUMMARIZE()`, `=TRANSLATE()`, `=SENTIMENT()`, `=EMBED()`, `=SIMILAR()`, `=FORMULA()` — better than Numerous because they're native, faster because of prompt caching.
 
+## Menu & UX comparison
+
+How the leading products organize their chrome — and what AiCell takes from each.
+
+| Product | Top-level structure | Notable choices |
+|---|---|---|
+| **Excel** | Ribbon (Home · Insert · Page Layout · Formulas · Data · Review · View · Help · Copilot) | Two-row ribbon, deeply faceted; **Copilot** is a top-level peer of File, signalling AI as a first-class surface, not a side panel. |
+| **Sheets** | Menubar (File · Edit · View · Insert · Format · Data · Tools · Extensions · Help) + small toolbar | Conventional menubar, every action discoverable; "Help me organize" / Gemini sidebar opens via an icon, not a menu. |
+| **Quadratic** | Almost no chrome — a thin toolbar + command palette (`⌘P`) | Menus replaced by the palette and the AI chat panel; relies on power users knowing what to type. |
+| **Sourcetable** | AI-first toolbar — prompt input is the primary affordance, conventional menus collapse behind a hamburger | Inverts the hierarchy: the AI input is louder than File/Edit. |
+| **Rows** (sunsetting) | Light menubar plus drag-to-canvas dashboard tools | Tuned for embed/share rather than data work; less to learn but less to do. |
+
+**Implication for AiCell.** A six-menu bar (File / Edit / View / Insert / Data / Help) is the lowest-friction option for users coming from Excel or Sheets — every command they reflexively reach for has a home. We **don't** copy Excel's ribbon (too heavy for a Phase-1 product) and we **don't** go full Quadratic (palette-only) because new users need a visible affordance.
+
+The differentiator is what the menus point to: **Ask Claude is the loud primary action** (a blue button in the toolbar above the menus), the empty-state of the side panel tells users they can do anything from chat, and the only menu we invest UI uniquely in is **Insert → Function** — a 50-function picker with search and click-to-insert, because that's the one task where a list beats chat.
+
 ## Sources
 
 - [Microsoft 365 Blog — Copilot agentic capabilities GA, April 2026](https://www.microsoft.com/en-us/microsoft-365/blog/2026/04/22/copilots-agentic-capabilities-in-word-excel-and-powerpoint-are-generally-available/)

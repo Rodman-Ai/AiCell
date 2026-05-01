@@ -1,11 +1,18 @@
-import { useState, useRef, useEffect, type ChangeEvent } from "react";
-import { a1, type Workbook } from "@aicell/shared";
+import { useState, useRef, useEffect, useCallback, type ChangeEvent } from "react";
+import { a1, type Workbook, cellKey } from "@aicell/shared";
 import { useWorkbook, newBlankWorkbook } from "./useWorkbook";
 import { Grid } from "./Grid";
 import { SidePanel } from "./SidePanel";
 import { SheetTabs } from "./SheetTabs";
 import { ChartStrip } from "./ChartStrip";
-import { importSpreadsheetFile } from "./csv";
+import { MenuBar, type MenuSpec } from "./MenuBar";
+import { FunctionPicker } from "./FunctionPicker";
+import {
+  importSpreadsheetFile,
+  exportSheetAsCSV,
+  exportWorkbookAsXLSX,
+} from "./csv";
+import { parseTSV, serializeCell } from "./clipboard";
 import { listWorkbooks, loadWorkbook, saveWorkbook, getHealth, isOffline } from "./api";
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
@@ -16,6 +23,10 @@ type SaveState =
   | { kind: "saved"; at: number }
   | { kind: "error"; message: string };
 
+const isMac =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const modKey = isMac ? "⌘" : "Ctrl";
+
 export function App() {
   const api = useWorkbook();
   const [selection, setSelection] = useState({ row: 0, col: 0 });
@@ -24,11 +35,10 @@ export function App() {
   const [saveState, setSaveState] = useState<SaveState>({ kind: "idle" });
   const [aiEnabled, setAiEnabled] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const formulaInputRef = useRef<HTMLInputElement>(null);
 
-  // --- Boot: probe AI availability + load most-recent workbook ---
-  // In demo mode (VITE_API_BASE empty, e.g., GitHub Pages), skip every API
-  // call and run with an in-memory workbook.
   const bootedRef = useRef(false);
   useEffect(() => {
     if (bootedRef.current) return;
@@ -57,7 +67,6 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- Autosave with debounce ---
   const lastSavedRef = useRef<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -91,19 +100,285 @@ export function App() {
     if (!file) return;
     setBusy(true);
     try {
-      const t0 = performance.now();
       const sheets = await importSpreadsheetFile(file);
-      // First sheet replaces; remaining sheets are added
       const [first, ...rest] = sheets;
       if (first) api.loadSheet(first);
       for (const s of rest) api.loadSheet(s);
-      const ms = (performance.now() - t0).toFixed(0);
-      console.info(`Imported ${file.name} (${sheets.length} sheet${sheets.length === 1 ? "" : "s"}) in ${ms}ms`);
     } finally {
       setBusy(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
+
+  const insertFunctionAtSelection = useCallback(
+    (name: string) => {
+      const existing = api.getRaw(selection.row, selection.col);
+      const next = existing && !existing.startsWith("=") ? `=${name}(` : `=${name}(`;
+      api.setCell(selection.row, selection.col, next);
+      setTimeout(() => formulaInputRef.current?.focus(), 0);
+    },
+    [api, selection]
+  );
+
+  const onCopy = useCallback(async () => {
+    const raw = serializeCell(api.activeSheet, selection.row, selection.col);
+    try {
+      await navigator.clipboard.writeText(raw);
+    } catch {
+      // Clipboard may be blocked (insecure context) — silently no-op.
+    }
+  }, [api.activeSheet, selection]);
+
+  const onCut = useCallback(async () => {
+    await onCopy();
+    api.setCell(selection.row, selection.col, "");
+  }, [api, selection, onCopy]);
+
+  const onPaste = useCallback(async () => {
+    let text = "";
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      return;
+    }
+    if (text === "") return;
+    const grid = parseTSV(text);
+    if (grid.length === 1 && grid[0]!.length === 1) {
+      api.setCell(selection.row, selection.col, grid[0]![0]!);
+      return;
+    }
+    const edits = [];
+    for (let r = 0; r < grid.length; r++) {
+      const row = grid[r]!;
+      for (let c = 0; c < row.length; c++) {
+        edits.push({
+          row: selection.row + r,
+          col: selection.col + c,
+          raw: row[c] ?? "",
+        });
+      }
+    }
+    api.setCellsOnSheetBatch(api.activeSheet.name, edits);
+  }, [api, selection]);
+
+  const onClearSelection = useCallback(() => {
+    api.setCell(selection.row, selection.col, "");
+  }, [api, selection]);
+
+  // Global keyboard shortcuts. Skip when typing in any input/textarea (the
+  // grid's inline editor and the formula bar still get to handle their own
+  // typing) — except for ⌘Z/⌘V/⌘C which native inputs already handle natively
+  // anyway, so passing through is fine.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const inEditable =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      const mod = e.metaKey || e.ctrlKey;
+
+      if (mod && !e.shiftKey && (e.key === "z" || e.key === "Z")) {
+        if (inEditable) return;
+        e.preventDefault();
+        api.undo();
+      } else if (
+        mod &&
+        ((e.shiftKey && (e.key === "z" || e.key === "Z")) ||
+          e.key === "y" || e.key === "Y")
+      ) {
+        if (inEditable) return;
+        e.preventDefault();
+        api.redo();
+      } else if (mod && (e.key === "c" || e.key === "C")) {
+        if (inEditable) return;
+        e.preventDefault();
+        void onCopy();
+      } else if (mod && (e.key === "x" || e.key === "X")) {
+        if (inEditable) return;
+        e.preventDefault();
+        void onCut();
+      } else if (mod && (e.key === "v" || e.key === "V")) {
+        if (inEditable) return;
+        e.preventDefault();
+        void onPaste();
+      } else if (e.shiftKey && e.key === "F3") {
+        e.preventDefault();
+        setPickerOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [api, onCopy, onCut, onPaste]);
+
+  const triggerImport = () => fileInputRef.current?.click();
+
+  const menus: MenuSpec[] = [
+    {
+      label: "File",
+      items: [
+        {
+          kind: "item",
+          label: "New workbook",
+          onClick: () => api.replaceWorkbook(newBlankWorkbook(`wb-${Date.now()}`)),
+        },
+        { kind: "item", label: "Import…", onClick: triggerImport },
+        { kind: "separator" },
+        {
+          kind: "item",
+          label: "Export as CSV",
+          onClick: () => exportSheetAsCSV(api.activeSheet),
+        },
+        {
+          kind: "item",
+          label: "Export as XLSX",
+          onClick: () => exportWorkbookAsXLSX(api.workbook),
+        },
+      ],
+    },
+    {
+      label: "Edit",
+      items: [
+        {
+          kind: "item",
+          label: "Undo",
+          shortcut: `${modKey}Z`,
+          onClick: api.undo,
+          disabled: !api.canUndo,
+        },
+        {
+          kind: "item",
+          label: "Redo",
+          shortcut: `${modKey}⇧Z`,
+          onClick: api.redo,
+          disabled: !api.canRedo,
+        },
+        { kind: "separator" },
+        { kind: "item", label: "Cut", shortcut: `${modKey}X`, onClick: () => void onCut() },
+        { kind: "item", label: "Copy", shortcut: `${modKey}C`, onClick: () => void onCopy() },
+        { kind: "item", label: "Paste", shortcut: `${modKey}V`, onClick: () => void onPaste() },
+        { kind: "separator" },
+        { kind: "item", label: "Clear contents", shortcut: "Del", onClick: onClearSelection },
+      ],
+    },
+    {
+      label: "View",
+      items: [
+        {
+          kind: "item",
+          label: panelOpen ? "Hide Ask Claude panel" : "Show Ask Claude panel",
+          onClick: () => setPanelOpen((v) => !v),
+        },
+      ],
+    },
+    {
+      label: "Insert",
+      items: [
+        { kind: "item", label: "Sheet", onClick: api.addSheet },
+        { kind: "separator" },
+        {
+          kind: "item",
+          label: "Function…",
+          shortcut: "⇧F3",
+          onClick: () => setPickerOpen(true),
+        },
+      ],
+    },
+    {
+      label: "Data",
+      items: [
+        {
+          kind: "item",
+          label: "Sort sheet by selected column ↑",
+          onClick: () => sortActiveSheetByColumn(selection.col, true),
+        },
+        {
+          kind: "item",
+          label: "Sort sheet by selected column ↓",
+          onClick: () => sortActiveSheetByColumn(selection.col, false),
+        },
+        { kind: "separator" },
+        {
+          kind: "item",
+          label: "Remove duplicates in selected column",
+          onClick: () => removeDuplicatesInColumn(selection.col),
+        },
+      ],
+    },
+    {
+      label: "Help",
+      items: [
+        { kind: "item", label: "Function reference…", onClick: () => setPickerOpen(true) },
+        { kind: "item", label: "About AiCell", onClick: () => alert("AiCell — AI-native spreadsheet. Ask Claude what you'd normally click for.") },
+      ],
+    },
+  ];
+
+  function sortActiveSheetByColumn(col: number, ascending: boolean): void {
+    const sheet = api.activeSheet;
+    let maxRow = -1;
+    let maxCol = -1;
+    for (const key of Object.keys(sheet.cells)) {
+      const [r, c] = key.split(",").map(Number) as [number, number];
+      if (r > maxRow) maxRow = r;
+      if (c > maxCol) maxCol = c;
+    }
+    if (maxRow < 0) return;
+    const rows: { keyVal: string; values: (string | undefined)[] }[] = [];
+    for (let r = 0; r <= maxRow; r++) {
+      const values: (string | undefined)[] = [];
+      for (let c = 0; c <= maxCol; c++) {
+        values.push(sheet.cells[cellKey(r, c)]?.raw);
+      }
+      rows.push({ keyVal: values[col] ?? "", values });
+    }
+    rows.sort((a, b) => {
+      const an = Number(a.keyVal);
+      const bn = Number(b.keyVal);
+      const bothNum = !Number.isNaN(an) && !Number.isNaN(bn) && a.keyVal !== "" && b.keyVal !== "";
+      const cmp = bothNum ? an - bn : a.keyVal.localeCompare(b.keyVal);
+      return ascending ? cmp : -cmp;
+    });
+    const edits = [];
+    for (let r = 0; r < rows.length; r++) {
+      for (let c = 0; c <= maxCol; c++) {
+        edits.push({ row: r, col: c, raw: rows[r]!.values[c] ?? "" });
+      }
+    }
+    api.setCellsOnSheetBatch(sheet.name, edits);
+  }
+
+  function removeDuplicatesInColumn(col: number): void {
+    const sheet = api.activeSheet;
+    let maxRow = -1;
+    let maxCol = -1;
+    for (const key of Object.keys(sheet.cells)) {
+      const [r, c] = key.split(",").map(Number) as [number, number];
+      if (r > maxRow) maxRow = r;
+      if (c > maxCol) maxCol = c;
+    }
+    if (maxRow < 0) return;
+    const seen = new Set<string>();
+    const kept: (string | undefined)[][] = [];
+    for (let r = 0; r <= maxRow; r++) {
+      const v = sheet.cells[cellKey(r, col)]?.raw ?? "";
+      if (v === "" || !seen.has(v)) {
+        if (v !== "") seen.add(v);
+        const row: (string | undefined)[] = [];
+        for (let c = 0; c <= maxCol; c++) row.push(sheet.cells[cellKey(r, c)]?.raw);
+        kept.push(row);
+      }
+    }
+    const edits = [];
+    for (let r = 0; r <= maxRow; r++) {
+      for (let c = 0; c <= maxCol; c++) {
+        const raw = r < kept.length ? kept[r]![c] ?? "" : "";
+        edits.push({ row: r, col: c, raw });
+      }
+    }
+    api.setCellsOnSheetBatch(sheet.name, edits);
+  }
 
   const selRaw = api.getRaw(selection.row, selection.col);
   const selComputed = api.getComputed(selection.row, selection.col);
@@ -139,9 +414,11 @@ export function App() {
         <SaveIndicator state={saveState} />
         <span className="status">{status}</span>
       </div>
+      <MenuBar menus={menus} />
       <div className="formula-bar">
         <span className="addr">{a1(selection.row, selection.col)}</span>
         <input
+          ref={formulaInputRef}
           value={selRaw}
           onChange={(e) =>
             api.setCell(selection.row, selection.col, e.target.value)
@@ -180,6 +457,15 @@ export function App() {
           />
         )}
       </div>
+      {pickerOpen && (
+        <FunctionPicker
+          onClose={() => setPickerOpen(false)}
+          onPick={(entry) => {
+            setPickerOpen(false);
+            insertFunctionAtSelection(entry.name);
+          }}
+        />
+      )}
     </div>
   );
 }

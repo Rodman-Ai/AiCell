@@ -15,6 +15,14 @@ type Turn =
   | { kind: "user"; content: string }
   | { kind: "assistant"; content: string; plan?: PlanStep[]; planApplied?: boolean };
 
+const EXAMPLE_PROMPTS = [
+  "Clean up column B — trim whitespace, title-case the names, drop empty rows.",
+  "Sum revenue by region and put a bar chart of the totals on a new sheet.",
+  "Find duplicates in the Email column and highlight them.",
+  "Forecast the next 6 months of Sales using the last 24 months.",
+  "Write a VLOOKUP that pulls customer name from the Customers sheet by ID.",
+];
+
 export function SidePanel({
   workbook,
   aiEnabled,
@@ -105,18 +113,28 @@ export function SidePanel({
             AI is not configured. Set <code>ANTHROPIC_API_KEY</code> in the API service environment to enable.
           </div>
         )}
-        {turns.length === 0 && aiEnabled && (
-          <div className="side-panel-empty">
-            <p>Hi — I can see your workbook. Try:</p>
-            <ul>
-              <li>"Add a Total column that sums each row"</li>
-              <li>"Audit my formulas for issues"</li>
-              <li>"Forecast the next 3 periods of column B"</li>
-              <li>"Create a bar chart of A1:B10"</li>
-            </ul>
-            <p style={{ marginTop: 8 }}>
-              I'll propose a plan; you review and apply.
+        {turns.length === 0 && (
+          <div className="panel-intro">
+            <h3>Skip the menus — just ask.</h3>
+            <p>
+              This panel can do anything the toolbar can, and a lot it can't. Type what
+              you want in plain English and Claude proposes a plan you review before any
+              cells change.
             </p>
+            <p className="panel-intro-label">Try one of these:</p>
+            <div className="panel-intro-chips">
+              {EXAMPLE_PROMPTS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className="panel-intro-chip"
+                  disabled={!aiEnabled}
+                  onClick={() => setInput(p)}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {turns.map((t, i) =>
