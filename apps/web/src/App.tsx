@@ -12,7 +12,14 @@ import {
   exportSheetAsCSV,
   exportWorkbookAsXLSX,
 } from "./csv";
-import { parseTSV, serializeCell } from "./clipboard";
+import {
+  parseTSV,
+  serializeCell,
+  serializeRange,
+  normalizeRange,
+  rangeCellCount,
+  type Range,
+} from "./clipboard";
 import { listWorkbooks, loadWorkbook, saveWorkbook, getHealth, isOffline } from "./api";
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
@@ -29,7 +36,13 @@ const modKey = isMac ? "⌘" : "Ctrl";
 
 export function App() {
   const api = useWorkbook();
-  const [selection, setSelection] = useState({ row: 0, col: 0 });
+  const [selection, setSelection] = useState<Range>({
+    startRow: 0,
+    startCol: 0,
+    endRow: 0,
+    endCol: 0,
+  });
+  const anchor = { row: selection.startRow, col: selection.startCol };
   const [busy, setBusy] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>({ kind: "idle" });
@@ -112,27 +125,39 @@ export function App() {
 
   const insertFunctionAtSelection = useCallback(
     (name: string) => {
-      const existing = api.getRaw(selection.row, selection.col);
-      const next = existing && !existing.startsWith("=") ? `=${name}(` : `=${name}(`;
-      api.setCell(selection.row, selection.col, next);
+      api.setCell(anchor.row, anchor.col, `=${name}(`);
       setTimeout(() => formulaInputRef.current?.focus(), 0);
     },
-    [api, selection]
+    [api, anchor.row, anchor.col]
   );
 
   const onCopy = useCallback(async () => {
-    const raw = serializeCell(api.activeSheet, selection.row, selection.col);
+    const text =
+      rangeCellCount(selection) === 1
+        ? serializeCell(api.activeSheet, anchor.row, anchor.col)
+        : serializeRange(api.activeSheet, selection);
     try {
-      await navigator.clipboard.writeText(raw);
+      await navigator.clipboard.writeText(text);
     } catch {
       // Clipboard may be blocked (insecure context) — silently no-op.
     }
-  }, [api.activeSheet, selection]);
+  }, [api.activeSheet, selection, anchor.row, anchor.col]);
+
+  const clearRange = useCallback(() => {
+    const norm = normalizeRange(selection);
+    const edits = [];
+    for (let r = norm.startRow; r <= norm.endRow; r++) {
+      for (let c = norm.startCol; c <= norm.endCol; c++) {
+        edits.push({ row: r, col: c, raw: "" });
+      }
+    }
+    api.setCellsOnSheetBatch(api.activeSheet.name, edits);
+  }, [api, selection]);
 
   const onCut = useCallback(async () => {
     await onCopy();
-    api.setCell(selection.row, selection.col, "");
-  }, [api, selection, onCopy]);
+    clearRange();
+  }, [onCopy, clearRange]);
 
   const onPaste = useCallback(async () => {
     let text = "";
@@ -144,7 +169,7 @@ export function App() {
     if (text === "") return;
     const grid = parseTSV(text);
     if (grid.length === 1 && grid[0]!.length === 1) {
-      api.setCell(selection.row, selection.col, grid[0]![0]!);
+      api.setCell(anchor.row, anchor.col, grid[0]![0]!);
       return;
     }
     const edits = [];
@@ -152,18 +177,35 @@ export function App() {
       const row = grid[r]!;
       for (let c = 0; c < row.length; c++) {
         edits.push({
-          row: selection.row + r,
-          col: selection.col + c,
+          row: anchor.row + r,
+          col: anchor.col + c,
           raw: row[c] ?? "",
         });
       }
     }
     api.setCellsOnSheetBatch(api.activeSheet.name, edits);
-  }, [api, selection]);
+  }, [api, anchor.row, anchor.col]);
 
   const onClearSelection = useCallback(() => {
-    api.setCell(selection.row, selection.col, "");
-  }, [api, selection]);
+    clearRange();
+  }, [clearRange]);
+
+  const insertTodayShortcut = useCallback(() => {
+    api.setCell(anchor.row, anchor.col, "=TODAY()");
+  }, [api, anchor.row, anchor.col]);
+
+  const insertNowShortcut = useCallback(() => {
+    api.setCell(anchor.row, anchor.col, "=NOW()");
+  }, [api, anchor.row, anchor.col]);
+
+  const selectAll = useCallback(() => {
+    setSelection({
+      startRow: 0,
+      startCol: 0,
+      endRow: api.activeSheet.rowCount - 1,
+      endCol: api.activeSheet.colCount - 1,
+    });
+  }, [api.activeSheet]);
 
   // Global keyboard shortcuts. Skip when typing in any input/textarea (the
   // grid's inline editor and the formula bar still get to handle their own
@@ -206,11 +248,27 @@ export function App() {
       } else if (e.shiftKey && e.key === "F3") {
         e.preventDefault();
         setPickerOpen(true);
+      } else if (mod && (e.key === "/" || (e.key === "?" && e.shiftKey))) {
+        if (inEditable) return;
+        e.preventDefault();
+        setPickerOpen(true);
+      } else if (mod && e.key === ";" && !e.shiftKey) {
+        if (inEditable) return;
+        e.preventDefault();
+        insertTodayShortcut();
+      } else if (mod && e.key === ":" && e.shiftKey) {
+        if (inEditable) return;
+        e.preventDefault();
+        insertNowShortcut();
+      } else if (mod && (e.key === "a" || e.key === "A")) {
+        if (inEditable) return;
+        e.preventDefault();
+        selectAll();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [api, onCopy, onCut, onPaste]);
+  }, [api, onCopy, onCut, onPaste, insertTodayShortcut, insertNowShortcut, selectAll]);
 
   const triggerImport = () => fileInputRef.current?.click();
 
@@ -291,18 +349,18 @@ export function App() {
         {
           kind: "item",
           label: "Sort sheet by selected column ↑",
-          onClick: () => sortActiveSheetByColumn(selection.col, true),
+          onClick: () => sortActiveSheetByColumn(anchor.col, true),
         },
         {
           kind: "item",
           label: "Sort sheet by selected column ↓",
-          onClick: () => sortActiveSheetByColumn(selection.col, false),
+          onClick: () => sortActiveSheetByColumn(anchor.col, false),
         },
         { kind: "separator" },
         {
           kind: "item",
           label: "Remove duplicates in selected column",
-          onClick: () => removeDuplicatesInColumn(selection.col),
+          onClick: () => removeDuplicatesInColumn(anchor.col),
         },
       ],
     },
@@ -380,8 +438,14 @@ export function App() {
     api.setCellsOnSheetBatch(sheet.name, edits);
   }
 
-  const selRaw = api.getRaw(selection.row, selection.col);
-  const selComputed = api.getComputed(selection.row, selection.col);
+  const selRaw = api.getRaw(anchor.row, anchor.col);
+  const selComputed = api.getComputed(anchor.row, anchor.col);
+  const cellCount = rangeCellCount(selection);
+  const norm = normalizeRange(selection);
+  const rangeLabel =
+    cellCount === 1
+      ? a1(anchor.row, anchor.col)
+      : `${a1(norm.startRow, norm.startCol)}:${a1(norm.endRow, norm.endCol)} · ${cellCount.toLocaleString()} cells`;
   const baseStatus = `${api.activeSheet.name} · ${api.activeSheet.rowCount.toLocaleString()} rows × ${api.activeSheet.colCount} cols`;
   const status = bootError
     ? bootError
@@ -416,12 +480,14 @@ export function App() {
       </div>
       <MenuBar menus={menus} />
       <div className="formula-bar">
-        <span className="addr">{a1(selection.row, selection.col)}</span>
+        <span className="addr" title={cellCount > 1 ? rangeLabel : undefined}>
+          {rangeLabel}
+        </span>
         <input
           ref={formulaInputRef}
           value={selRaw}
           onChange={(e) =>
-            api.setCell(selection.row, selection.col, e.target.value)
+            api.setCell(anchor.row, anchor.col, e.target.value)
           }
           placeholder={
             selComputed.error

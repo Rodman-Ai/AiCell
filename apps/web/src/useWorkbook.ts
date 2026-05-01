@@ -32,6 +32,8 @@ export type WorkbookApi = {
   addSheetByName: (name: string) => void;
   addChart: (sheetName: string, spec: Omit<ChartSpec, "id">) => void;
   removeChart: (sheetName: string, chartId: string) => void;
+  /** Set a single column's width (px). Pushes one undo step per call. */
+  setColWidth: (sheetName: string, col: number, width: number) => void;
   /** Undo / redo over workbook snapshots. */
   undo: () => void;
   redo: () => void;
@@ -324,6 +326,21 @@ export function useWorkbook(): WorkbookApi {
     [pushHistory]
   );
 
+  const setColWidth = useCallback(
+    (sheetName: string, col: number, width: number) => {
+      pushHistory();
+      setWorkbook((wb) => {
+        const sheets = wb.sheets.map((s) => {
+          if (s.name !== sheetName) return s;
+          const colWidths = { ...(s.colWidths ?? {}), [col]: Math.max(24, Math.round(width)) };
+          return { ...s, colWidths };
+        });
+        return { ...wb, sheets };
+      });
+    },
+    [pushHistory]
+  );
+
   const undo = useCallback(() => {
     const prev = pastRef.current.pop();
     if (!prev) return;
@@ -370,6 +387,7 @@ export function useWorkbook(): WorkbookApi {
     setCellsOnSheetBatch,
     addChart,
     removeChart,
+    setColWidth,
     undo,
     redo,
     canUndo,

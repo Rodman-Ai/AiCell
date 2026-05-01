@@ -8,23 +8,39 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { colLetters } from "@aicell/shared";
 import type { WorkbookApi } from "./useWorkbook";
-
-type Selection = { row: number; col: number };
+import { normalizeRange, rangeContains, type Range } from "./clipboard";
 
 const ROW_HEIGHT = 24;
-const COL_WIDTH = 100;
+const DEFAULT_COL_WIDTH = 100;
+const MIN_COL_WIDTH = 32;
 const ROW_HEADER_WIDTH = 56;
 
 type Props = {
   api: WorkbookApi;
-  selection: Selection;
-  onSelect: (sel: Selection) => void;
+  selection: Range;
+  onSelect: (sel: Range) => void;
 };
 
 export function Grid({ api, selection, onSelect }: Props) {
-  const { activeSheet, getRaw, getComputed, setCell, version } = api;
+  const { activeSheet, getRaw, getComputed, setCell, version, setColWidth } = api;
   const parentRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<{ row: number; col: number; draft: string } | null>(null);
+  const [resizing, setResizing] = useState<{ col: number; startX: number; startWidth: number } | null>(null);
+  const [draftWidth, setDraftWidth] = useState<{ col: number; width: number } | null>(null);
+
+  const widthOf = useCallback(
+    (col: number): number => {
+      if (draftWidth && draftWidth.col === col) return draftWidth.width;
+      return activeSheet.colWidths?.[col] ?? DEFAULT_COL_WIDTH;
+    },
+    [activeSheet.colWidths, draftWidth]
+  );
+
+  const totalWidth = useCallback((): number => {
+    let w = ROW_HEADER_WIDTH;
+    for (let c = 0; c < activeSheet.colCount; c++) w += widthOf(c);
+    return w;
+  }, [activeSheet.colCount, widthOf])();
 
   const rowVirtualizer = useVirtualizer({
     count: activeSheet.rowCount,
@@ -32,8 +48,6 @@ export function Grid({ api, selection, onSelect }: Props) {
     estimateSize: () => ROW_HEIGHT,
     overscan: 8,
   });
-
-  const totalWidth = ROW_HEADER_WIDTH + activeSheet.colCount * COL_WIDTH;
 
   const beginEdit = useCallback(
     (row: number, col: number, seed?: string) => {
@@ -54,37 +68,166 @@ export function Grid({ api, selection, onSelect }: Props) {
   const handleCellKeyDown = useCallback(
     (e: KeyboardEvent<HTMLDivElement>) => {
       if (editing) return;
-      const { row, col } = selection;
+      const sel = normalizeRange(selection);
+      const anchor = { row: selection.startRow, col: selection.startCol };
+      const focus = { row: selection.endRow, col: selection.endCol };
+      const lastRow = activeSheet.rowCount - 1;
+      const lastCol = activeSheet.colCount - 1;
+
+      const moveAnchor = (row: number, col: number) =>
+        onSelect({ startRow: row, startCol: col, endRow: row, endCol: col });
+      const moveFocus = (row: number, col: number) =>
+        onSelect({ ...selection, endRow: row, endCol: col });
+
       if (e.key === "ArrowDown") {
-        onSelect({ row: Math.min(row + 1, activeSheet.rowCount - 1), col });
+        if (e.shiftKey) moveFocus(Math.min(focus.row + 1, lastRow), focus.col);
+        else moveAnchor(Math.min(sel.endRow + 1, lastRow), anchor.col);
         e.preventDefault();
       } else if (e.key === "ArrowUp") {
-        onSelect({ row: Math.max(row - 1, 0), col });
+        if (e.shiftKey) moveFocus(Math.max(focus.row - 1, 0), focus.col);
+        else moveAnchor(Math.max(sel.startRow - 1, 0), anchor.col);
         e.preventDefault();
       } else if (e.key === "ArrowLeft") {
-        onSelect({ row, col: Math.max(col - 1, 0) });
+        if (e.shiftKey) moveFocus(focus.row, Math.max(focus.col - 1, 0));
+        else moveAnchor(anchor.row, Math.max(sel.startCol - 1, 0));
         e.preventDefault();
       } else if (e.key === "ArrowRight" || e.key === "Tab") {
-        onSelect({ row, col: Math.min(col + 1, activeSheet.colCount - 1) });
+        if (e.shiftKey && e.key !== "Tab") moveFocus(focus.row, Math.min(focus.col + 1, lastCol));
+        else moveAnchor(anchor.row, Math.min(sel.endCol + 1, lastCol));
         e.preventDefault();
       } else if (e.key === "Enter" || e.key === "F2") {
-        beginEdit(row, col);
+        beginEdit(anchor.row, anchor.col);
         e.preventDefault();
       } else if (e.key === "Delete" || e.key === "Backspace") {
-        setCell(row, col, "");
+        // Clear all selected cells
+        for (let r = sel.startRow; r <= sel.endRow; r++) {
+          for (let c = sel.startCol; c <= sel.endCol; c++) {
+            setCell(r, c, "");
+          }
+        }
         e.preventDefault();
-      } else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        beginEdit(row, col, e.key);
+      } else if (e.key === "Home") {
+        if (e.ctrlKey || e.metaKey) moveAnchor(0, 0);
+        else moveAnchor(anchor.row, 0);
+        e.preventDefault();
+      } else if (e.key === "End") {
+        if (e.ctrlKey || e.metaKey) moveAnchor(lastRow, lastCol);
+        else moveAnchor(anchor.row, lastCol);
+        e.preventDefault();
+      } else if (
+        e.key.length === 1 &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey
+      ) {
+        beginEdit(anchor.row, anchor.col, e.key);
         e.preventDefault();
       }
     },
     [editing, selection, activeSheet, onSelect, beginEdit, setCell]
   );
 
+  // Mouse drag-to-select state
+  const dragRef = useRef<{ startRow: number; startCol: number } | null>(null);
+
+  const onCellMouseDown = useCallback(
+    (row: number, col: number, e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      if (e.shiftKey) {
+        onSelect({ ...selection, endRow: row, endCol: col });
+        return;
+      }
+      dragRef.current = { startRow: row, startCol: col };
+      onSelect({ startRow: row, startCol: col, endRow: row, endCol: col });
+    },
+    [selection, onSelect]
+  );
+
+  const onCellMouseEnter = useCallback(
+    (row: number, col: number, e: React.MouseEvent) => {
+      if (!dragRef.current) return;
+      if (e.buttons === 0) {
+        dragRef.current = null;
+        return;
+      }
+      const start = dragRef.current;
+      onSelect({
+        startRow: start.startRow,
+        startCol: start.startCol,
+        endRow: row,
+        endCol: col,
+      });
+    },
+    [onSelect]
+  );
+
+  useEffect(() => {
+    const onUp = () => {
+      dragRef.current = null;
+    };
+    window.addEventListener("mouseup", onUp);
+    return () => window.removeEventListener("mouseup", onUp);
+  }, []);
+
+  // Column resize drag
+  useEffect(() => {
+    if (!resizing) return;
+    const onMove = (e: MouseEvent) => {
+      const dx = e.clientX - resizing.startX;
+      const w = Math.max(MIN_COL_WIDTH, resizing.startWidth + dx);
+      setDraftWidth({ col: resizing.col, width: w });
+    };
+    const onUp = () => {
+      if (draftWidth && draftWidth.col === resizing.col) {
+        setColWidth(activeSheet.name, resizing.col, draftWidth.width);
+      }
+      setResizing(null);
+      setDraftWidth(null);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [resizing, draftWidth, activeSheet.name, setColWidth]);
+
   // Auto-focus the grid container so keyboard works after CSV import
   useEffect(() => {
     parentRef.current?.focus();
   }, [activeSheet.id]);
+
+  // Compute column left offsets for absolute positioning
+  const colLefts: number[] = [];
+  let acc = ROW_HEADER_WIDTH;
+  for (let c = 0; c < activeSheet.colCount; c++) {
+    colLefts.push(acc);
+    acc += widthOf(c);
+  }
+
+  const onColumnHeaderClick = useCallback(
+    (col: number) => {
+      onSelect({
+        startRow: 0,
+        startCol: col,
+        endRow: activeSheet.rowCount - 1,
+        endCol: col,
+      });
+    },
+    [onSelect, activeSheet.rowCount]
+  );
+
+  const onRowHeaderClick = useCallback(
+    (row: number) => {
+      onSelect({
+        startRow: row,
+        startCol: 0,
+        endRow: row,
+        endCol: activeSheet.colCount - 1,
+      });
+    },
+    [onSelect, activeSheet.colCount]
+  );
 
   return (
     <div
@@ -96,8 +239,21 @@ export function Grid({ api, selection, onSelect }: Props) {
       <div className="grid-header-row" style={{ width: totalWidth }}>
         <div className="grid-col-header corner" />
         {Array.from({ length: activeSheet.colCount }).map((_, c) => (
-          <div className="grid-col-header" key={c} style={{ width: COL_WIDTH }}>
-            {colLetters(c)}
+          <div
+            className="grid-col-header"
+            key={c}
+            style={{ width: widthOf(c) }}
+            onClick={() => onColumnHeaderClick(c)}
+          >
+            <span>{colLetters(c)}</span>
+            <span
+              className="col-resize-handle"
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setResizing({ col: c, startX: e.clientX, startWidth: widthOf(c) });
+              }}
+            />
           </div>
         ))}
       </div>
@@ -120,7 +276,11 @@ export function Grid({ api, selection, onSelect }: Props) {
                 width: totalWidth,
               }}
             >
-              <div className="grid-row-header" style={{ width: ROW_HEADER_WIDTH }}>
+              <div
+                className="grid-row-header"
+                style={{ width: ROW_HEADER_WIDTH }}
+                onClick={() => onRowHeaderClick(r)}
+              >
                 {r + 1}
               </div>
               {Array.from({ length: activeSheet.colCount }).map((_, c) => (
@@ -128,12 +288,15 @@ export function Grid({ api, selection, onSelect }: Props) {
                   key={c}
                   row={r}
                   col={c}
-                  selected={selection.row === r && selection.col === c}
+                  width={widthOf(c)}
+                  isAnchor={selection.startRow === r && selection.startCol === c}
+                  inSelection={rangeContains(selection, r, c)}
                   editing={editing && editing.row === r && editing.col === c ? editing : null}
                   versionTick={version}
                   getRaw={getRaw}
                   getComputed={getComputed}
-                  onSelect={onSelect}
+                  onMouseDown={onCellMouseDown}
+                  onMouseEnter={onCellMouseEnter}
                   onBeginEdit={beginEdit}
                   onChangeDraft={(v) =>
                     setEditing((prev) => (prev ? { ...prev, draft: v } : prev))
@@ -153,12 +316,15 @@ export function Grid({ api, selection, onSelect }: Props) {
 type CellProps = {
   row: number;
   col: number;
-  selected: boolean;
+  width: number;
+  isAnchor: boolean;
+  inSelection: boolean;
   editing: { row: number; col: number; draft: string } | null;
   versionTick: number;
   getRaw: (row: number, col: number) => string;
   getComputed: WorkbookApi["getComputed"];
-  onSelect: (sel: Selection) => void;
+  onMouseDown: (row: number, col: number, e: React.MouseEvent) => void;
+  onMouseEnter: (row: number, col: number, e: React.MouseEvent) => void;
   onBeginEdit: (row: number, col: number) => void;
   onChangeDraft: (v: string) => void;
   onCommit: () => void;
@@ -168,18 +334,20 @@ type CellProps = {
 function CellView({
   row,
   col,
-  selected,
+  width,
+  isAnchor,
+  inSelection,
   editing,
   versionTick,
   getRaw,
   getComputed,
-  onSelect,
+  onMouseDown,
+  onMouseEnter,
   onBeginEdit,
   onChangeDraft,
   onCommit,
   onCancel,
 }: CellProps) {
-  // versionTick included so component re-evaluates after recalc
   void versionTick;
   const computed = getComputed(row, col);
   const raw = getRaw(row, col);
@@ -194,8 +362,8 @@ function CellView({
   if (editing) {
     return (
       <div
-        className={`grid-cell selected${isNumeric ? " numeric" : ""}`}
-        style={{ width: COL_WIDTH }}
+        className={`grid-cell anchor${isNumeric ? " numeric" : ""}`}
+        style={{ width }}
       >
         <input
           autoFocus
@@ -211,7 +379,6 @@ function CellView({
               e.preventDefault();
             } else if (e.key === "Tab") {
               onCommit();
-              // Tab handling for next cell is done by parent on next keydown
             }
             e.stopPropagation();
           }}
@@ -224,7 +391,8 @@ function CellView({
     "grid-cell",
     isNumeric ? "numeric" : "",
     computed.error ? "error" : "",
-    selected ? "selected" : "",
+    isAnchor ? "anchor" : "",
+    inSelection && !isAnchor ? "in-range" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -232,9 +400,10 @@ function CellView({
   return (
     <div
       className={cls}
-      style={{ width: COL_WIDTH }}
+      style={{ width }}
       title={raw && raw !== display ? raw : undefined}
-      onClick={() => onSelect({ row, col })}
+      onMouseDown={(e) => onMouseDown(row, col, e)}
+      onMouseEnter={(e) => onMouseEnter(row, col, e)}
       onDoubleClick={() => onBeginEdit(row, col)}
     >
       {display}
