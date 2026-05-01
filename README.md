@@ -2,22 +2,79 @@
 
 An AI-forward, browser-first spreadsheet — a Microsoft Excel clone built around Claude from day one.
 
-## What this repo currently contains
+## Repo layout
 
-This is the **planning** stage of the project. The repo currently contains the product strategy and feature backlog only — no application code yet.
+```
+apps/web/          Vite + React + TypeScript SPA (the UI you see)
+packages/shared/   Cross-package types (Workbook, Sheet, Cell, ChartSpec)
+packages/calc/     HyperFormula wrapper + AI cell-function plugin
+services/api/      Hono server: workbook persistence + AI endpoints
+docs/              Strategy docs (competitor analysis, features, roadmap)
+.github/workflows/ CI / Pages deployment
+```
 
-- [`docs/competitor-analysis.md`](docs/competitor-analysis.md) — survey of Excel+Copilot, Sheets+Gemini, Quadratic, Sourcetable, Rows, Numerous, Bricks, Endex, Shortcut, Kuse, GPTExcel
-- [`docs/features.md`](docs/features.md) — the 100-feature backlog organized by category
-- [`docs/roadmap.md`](docs/roadmap.md) — phased delivery plan (Phase 0 spike → Phase 3 enterprise)
-- [`docs/tech-stack.md`](docs/tech-stack.md) — recommended tech stack and architecture
+## What's built
+
+- **Spreadsheet**: virtualized grid, multi-sheet workbooks, CSV/XLSX import, ~400 Excel-compatible formulas via HyperFormula.
+- **AI cell functions**: `=AI`, `=CLASSIFY`, `=EXTRACT`, `=SUMMARIZE`, `=TRANSLATE`, `=SENTIMENT`, `=FORMULA` (Claude Haiku 4.5 with prompt caching).
+- **Plan-then-apply agent**: Claude Opus 4.7 with tool use proposes a plan (set_cell / add_sheet / create_chart) plus read-only audit/forecast helpers; user reviews and applies.
+- **Charts**: bar / line / area / pie / scatter via Recharts, attached per-sheet.
+- **Persistence**: file-based store by default; Postgres adapter when `DATABASE_URL` is set.
+
+See [`docs/roadmap.md`](docs/roadmap.md) for the honest "shipped vs. deferred" status. Big deferred items: Yjs real-time collab, Python/SQL/JS code cells, all DB/SaaS connectors, voice, MCP, full enterprise/SSO.
+
+## Local development
+
+```sh
+pnpm install
+pnpm dev            # boots api on :3000 and web on :5173 in parallel
+# or run them separately:
+pnpm dev:api
+pnpm dev:web
+```
+
+To enable AI features, set `ANTHROPIC_API_KEY` in the API service environment before booting:
+
+```sh
+ANTHROPIC_API_KEY=sk-ant-... pnpm dev:api
+```
+
+Without a key, the side panel and AI cell functions surface a clear "AI is not configured" notice; the rest of the app works normally.
+
+## Deployment
+
+### GitHub Pages (static frontend, demo mode)
+
+A workflow at `.github/workflows/pages.yml` builds `apps/web` and publishes it to GitHub Pages on every push to `main` (or via manual trigger from the Actions tab).
+
+The Pages build is **demo mode**: `VITE_API_BASE` is empty, so the app skips every backend call. Persistence and AI features are disabled — you get a working spreadsheet UI and the formula engine, no chat panel, no autosave. The toolbar shows "Demo mode (no backend)".
+
+**One-time setup:**
+1. In the repo settings → **Pages** → set **Source** to **GitHub Actions**.
+2. Merge this branch (or any branch with the workflow) to `main`. The workflow runs and the site appears at `https://<owner>.github.io/AiCell/`.
+3. To deploy from a feature branch for preview, run the workflow manually from the **Actions** tab via the **Run workflow** button.
+
+If your repo is forked under a different name, update `VITE_BASE` in the workflow to `/<your-repo-name>/`.
+
+### Pages with a hosted backend
+
+To run a real (non-demo) deployment on Pages, host the API somewhere reachable (Fly.io, Railway, Render, etc.) and set `VITE_API_BASE` to its absolute URL in the workflow:
+
+```yaml
+env:
+  VITE_BASE: /AiCell/
+  VITE_API_BASE: https://api.example.com
+```
+
+The API service must enable CORS for the Pages origin (it already does — see `services/api/src/app.ts`).
 
 ## Differentiation thesis
 
-Claude-native agent that **plans → diffs → applies** edits with full undo, paired with a code-cell grid (Python/SQL/JS), MCP connectors as a first-class primitive, and the cleanest collab UX in the category.
+Claude-native agent that **plans → diffs → applies** edits with full undo, paired with a code-cell grid (Python/SQL/JS — deferred), MCP connectors as a first-class primitive (deferred), and the cleanest collab UX in the category (deferred).
 
 ## Targets
 
 - **Form factor:** Web app (browser-first)
-- **AI:** Anthropic Claude (Sonnet 4.6 default, Opus 4.7 for plans, Haiku 4.5 for in-cell)
+- **AI:** Anthropic Claude (Opus 4.7 for the agent, Haiku 4.5 for in-cell)
 - **Phase 1 user:** an FP&A analyst who can replace Google Sheets for 70% of tasks
 - **Phase 2 quality bar:** ≥75% on SpreadsheetBench

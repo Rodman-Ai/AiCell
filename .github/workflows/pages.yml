@@ -1,0 +1,73 @@
+name: Deploy web app to GitHub Pages
+
+# Triggers:
+# - push to main: deploy on every merge
+# - manual: trigger from the Actions tab
+# To preview from a feature branch, run via workflow_dispatch from the Actions UI.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Pages requires these permissions for the deploy step.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deploy at a time; don't cancel an in-progress run.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Test
+        run: pnpm -r test
+
+      - name: Build web app for Pages
+        env:
+          # Project-page base path. If you fork to a different repo name,
+          # update this to /<your-repo-name>/.
+          VITE_BASE: /AiCell/
+          # Empty string puts the app in demo mode — no backend calls.
+          # To point at a hosted backend, set this to the absolute URL
+          # (e.g. https://api.example.com) in the workflow OR via repo
+          # variables (vars.AICELL_API_BASE) and reference here.
+          VITE_API_BASE: ""
+        run: pnpm --filter @aicell/web build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
