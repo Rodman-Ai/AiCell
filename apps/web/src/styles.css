@@ -632,6 +632,178 @@ body,
   background: var(--aicell-border);
 }
 
+/* Format toolbar */
+.format-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--aicell-border);
+  background: var(--aicell-header-bg);
+  flex-shrink: 0;
+  font-size: 12px;
+  height: 32px;
+}
+
+.fmt-btn {
+  background: white;
+  border: 1px solid var(--aicell-border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #1f2937;
+  min-width: 26px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fmt-btn:hover {
+  background: #f0f0f3;
+}
+
+.fmt-btn.active {
+  background: var(--aicell-selected);
+  border-color: var(--aicell-selected-border);
+  color: #1e40af;
+}
+
+.fmt-clear {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.fmt-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--aicell-border);
+  margin: 0 4px;
+}
+
+.fmt-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: white;
+  border: 1px solid var(--aicell-border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-weight: 700;
+  cursor: pointer;
+  height: 24px;
+}
+
+.fmt-color input[type="color"] {
+  width: 18px;
+  height: 18px;
+  border: none;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.fmt-bg {
+  font-weight: 400;
+}
+
+.fmt-select {
+  border: 1px solid var(--aicell-border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 12px;
+  background: white;
+  height: 24px;
+  cursor: pointer;
+}
+
+/* Find & replace modal */
+.find-replace {
+  width: 420px;
+  max-width: 90vw;
+}
+
+.find-replace-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.find-replace-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--aicell-header-fg);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.find-replace-body label > input[type="text"],
+.find-replace-body label > input:not([type]) {
+  border: 1px solid var(--aicell-border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+  text-transform: none;
+  font-weight: 400;
+}
+
+.find-replace-checkbox {
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: #1f2937 !important;
+  text-transform: none !important;
+}
+
+.find-replace-status {
+  font-size: 12px;
+  color: var(--aicell-header-fg);
+  padding: 4px 0;
+}
+
+.find-replace-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.find-replace-actions button {
+  padding: 5px 12px;
+  border: 1px solid var(--aicell-border);
+  background: white;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.find-replace-actions button:hover:not(:disabled) {
+  background: #f0f0f3;
+}
+
+.find-replace-actions button.primary {
+  background: #2563eb;
+  color: white;
+  border-color: #2563eb;
+}
+
+.find-replace-actions button.primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.find-replace-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Modal shell (function picker, etc.) */
 .modal-backdrop {
   position: fixed;

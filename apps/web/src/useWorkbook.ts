@@ -4,8 +4,11 @@ import {
   type Workbook,
   type Sheet,
   type ChartSpec,
+  type CellFormat,
   cellKey,
 } from "@aicell/shared";
+import type { Range } from "./clipboard";
+import { mergeFormat } from "./format";
 import { callAiCell, isOffline } from "./api";
 
 if (!isOffline) {
@@ -34,6 +37,11 @@ export type WorkbookApi = {
   removeChart: (sheetName: string, chartId: string) => void;
   /** Set a single column's width (px). Pushes one undo step per call. */
   setColWidth: (sheetName: string, col: number, width: number) => void;
+  /** Apply a format patch to every cell in the range. One undo step. */
+  applyFormat: (sheetName: string, range: Range, patch: Partial<CellFormat>) => void;
+  /** Remove all formatting from every cell in the range. One undo step. */
+  clearFormat: (sheetName: string, range: Range) => void;
+  getCellFormat: (row: number, col: number) => CellFormat | undefined;
   /** Undo / redo over workbook snapshots. */
   undo: () => void;
   redo: () => void;
@@ -131,8 +139,14 @@ export function useWorkbook(): WorkbookApi {
         const sheets = wb.sheets.map((s) => {
           if (s.id !== activeSheetId) return s;
           const cells = { ...s.cells };
-          if (raw === "") delete cells[key];
-          else cells[key] = { raw };
+          const existing = cells[key];
+          if (raw === "") {
+            // Preserve format on empty cells; only delete when there's no format either.
+            if (existing?.format) cells[key] = { raw: "", format: existing.format };
+            else delete cells[key];
+          } else {
+            cells[key] = existing?.format ? { raw, format: existing.format } : { raw };
+          }
           return {
             ...s,
             cells,
@@ -238,8 +252,13 @@ export function useWorkbook(): WorkbookApi {
         const sheets = wb.sheets.map((s) => {
           if (s.name !== sheetName) return s;
           const cells = { ...s.cells };
-          if (raw === "") delete cells[key];
-          else cells[key] = { raw };
+          const existing = cells[key];
+          if (raw === "") {
+            if (existing?.format) cells[key] = { raw: "", format: existing.format };
+            else delete cells[key];
+          } else {
+            cells[key] = existing?.format ? { raw, format: existing.format } : { raw };
+          }
           return {
             ...s,
             cells,
@@ -271,8 +290,13 @@ export function useWorkbook(): WorkbookApi {
           let colCount = s.colCount;
           for (const e of edits) {
             const key = cellKey(e.row, e.col);
-            if (e.raw === "") delete cells[key];
-            else cells[key] = { raw: e.raw };
+            const existing = cells[key];
+            if (e.raw === "") {
+              if (existing?.format) cells[key] = { raw: "", format: existing.format };
+              else delete cells[key];
+            } else {
+              cells[key] = existing?.format ? { raw: e.raw, format: existing.format } : { raw: e.raw };
+            }
             if (e.row + 1 > rowCount) rowCount = e.row + 1;
             if (e.col + 1 > colCount) colCount = e.col + 1;
           }
@@ -324,6 +348,80 @@ export function useWorkbook(): WorkbookApi {
       setVersion((v) => v + 1);
     },
     [pushHistory]
+  );
+
+  const applyFormat = useCallback(
+    (sheetName: string, range: Range, patch: Partial<CellFormat>) => {
+      const norm = {
+        startRow: Math.min(range.startRow, range.endRow),
+        endRow: Math.max(range.startRow, range.endRow),
+        startCol: Math.min(range.startCol, range.endCol),
+        endCol: Math.max(range.startCol, range.endCol),
+      };
+      pushHistory();
+      setWorkbook((wb) => {
+        const sheets = wb.sheets.map((s) => {
+          if (s.name !== sheetName) return s;
+          const cells = { ...s.cells };
+          for (let r = norm.startRow; r <= norm.endRow; r++) {
+            for (let c = norm.startCol; c <= norm.endCol; c++) {
+              const key = cellKey(r, c);
+              const existing = cells[key];
+              const merged = mergeFormat(existing?.format, patch);
+              if (existing) {
+                if (merged) cells[key] = { ...existing, format: merged };
+                else if (existing.raw === "") delete cells[key];
+                else cells[key] = { raw: existing.raw };
+              } else if (merged) {
+                cells[key] = { raw: "", format: merged };
+              }
+            }
+          }
+          return { ...s, cells };
+        });
+        return { ...wb, sheets };
+      });
+      setVersion((v) => v + 1);
+    },
+    [pushHistory]
+  );
+
+  const clearFormat = useCallback(
+    (sheetName: string, range: Range) => {
+      const norm = {
+        startRow: Math.min(range.startRow, range.endRow),
+        endRow: Math.max(range.startRow, range.endRow),
+        startCol: Math.min(range.startCol, range.endCol),
+        endCol: Math.max(range.startCol, range.endCol),
+      };
+      pushHistory();
+      setWorkbook((wb) => {
+        const sheets = wb.sheets.map((s) => {
+          if (s.name !== sheetName) return s;
+          const cells = { ...s.cells };
+          for (let r = norm.startRow; r <= norm.endRow; r++) {
+            for (let c = norm.startCol; c <= norm.endCol; c++) {
+              const key = cellKey(r, c);
+              const existing = cells[key];
+              if (!existing) continue;
+              if (existing.raw === "") delete cells[key];
+              else cells[key] = { raw: existing.raw };
+            }
+          }
+          return { ...s, cells };
+        });
+        return { ...wb, sheets };
+      });
+      setVersion((v) => v + 1);
+    },
+    [pushHistory]
+  );
+
+  const getCellFormat = useCallback(
+    (row: number, col: number): CellFormat | undefined => {
+      return activeSheet.cells[cellKey(row, col)]?.format;
+    },
+    [activeSheet]
   );
 
   const setColWidth = useCallback(
@@ -388,6 +486,9 @@ export function useWorkbook(): WorkbookApi {
     addChart,
     removeChart,
     setColWidth,
+    applyFormat,
+    clearFormat,
+    getCellFormat,
     undo,
     redo,
     canUndo,

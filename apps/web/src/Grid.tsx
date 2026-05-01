@@ -6,9 +6,10 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { colLetters } from "@aicell/shared";
+import { colLetters, type CellFormat } from "@aicell/shared";
 import type { WorkbookApi } from "./useWorkbook";
 import { normalizeRange, rangeContains, type Range } from "./clipboard";
+import { formatToStyle, formatValue } from "./format";
 
 const ROW_HEIGHT = 24;
 const DEFAULT_COL_WIDTH = 100;
@@ -22,7 +23,7 @@ type Props = {
 };
 
 export function Grid({ api, selection, onSelect }: Props) {
-  const { activeSheet, getRaw, getComputed, setCell, version, setColWidth } = api;
+  const { activeSheet, getRaw, getComputed, getCellFormat, setCell, version, setColWidth } = api;
   const parentRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<{ row: number; col: number; draft: string } | null>(null);
   const [resizing, setResizing] = useState<{ col: number; startX: number; startWidth: number } | null>(null);
@@ -291,6 +292,7 @@ export function Grid({ api, selection, onSelect }: Props) {
                   width={widthOf(c)}
                   isAnchor={selection.startRow === r && selection.startCol === c}
                   inSelection={rangeContains(selection, r, c)}
+                  format={getCellFormat(r, c)}
                   editing={editing && editing.row === r && editing.col === c ? editing : null}
                   versionTick={version}
                   getRaw={getRaw}
@@ -319,6 +321,7 @@ type CellProps = {
   width: number;
   isAnchor: boolean;
   inSelection: boolean;
+  format: CellFormat | undefined;
   editing: { row: number; col: number; draft: string } | null;
   versionTick: number;
   getRaw: (row: number, col: number) => string;
@@ -337,6 +340,7 @@ function CellView({
   width,
   isAnchor,
   inSelection,
+  format,
   editing,
   versionTick,
   getRaw,
@@ -354,16 +358,15 @@ function CellView({
   const display =
     computed.error !== undefined
       ? computed.error
-      : computed.value === null
-        ? ""
-        : String(computed.value);
-  const isNumeric = typeof computed.value === "number";
+      : formatValue(computed.value, format?.numberFmt, format?.decimals ?? 2);
+  const isNumeric = typeof computed.value === "number" && !format?.align;
+  const fmtStyle = formatToStyle(format);
 
   if (editing) {
     return (
       <div
         className={`grid-cell anchor${isNumeric ? " numeric" : ""}`}
-        style={{ width }}
+        style={{ width, ...fmtStyle }}
       >
         <input
           autoFocus
@@ -400,7 +403,7 @@ function CellView({
   return (
     <div
       className={cls}
-      style={{ width }}
+      style={{ width, ...fmtStyle }}
       title={raw && raw !== display ? raw : undefined}
       onMouseDown={(e) => onMouseDown(row, col, e)}
       onMouseEnter={(e) => onMouseEnter(row, col, e)}
