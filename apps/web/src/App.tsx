@@ -1,17 +1,82 @@
-import { useState, useRef, type ChangeEvent } from "react";
-import { a1 } from "@aicell/shared";
-import { useWorkbook } from "./useWorkbook";
+import { useState, useRef, useEffect, type ChangeEvent } from "react";
+import { a1, type Workbook } from "@aicell/shared";
+import { useWorkbook, newBlankWorkbook } from "./useWorkbook";
 import { Grid } from "./Grid";
 import { importCsvFile } from "./csv";
+import { listWorkbooks, loadWorkbook, saveWorkbook } from "./api";
+
+const AUTOSAVE_DEBOUNCE_MS = 800;
+
+type SaveState =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "saved"; at: number }
+  | { kind: "error"; message: string };
 
 export function App() {
   const api = useWorkbook();
   const [selection, setSelection] = useState({ row: 0, col: 0 });
   const [busy, setBusy] = useState(false);
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>({ kind: "idle" });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const selRaw = api.getRaw(selection.row, selection.col);
-  const selComputed = api.getComputed(selection.row, selection.col);
+  // --- Boot: load most-recent workbook from API, or seed a new one ---
+  const bootedRef = useRef(false);
+  useEffect(() => {
+    if (bootedRef.current) return;
+    bootedRef.current = true;
+    (async () => {
+      try {
+        const list = await listWorkbooks();
+        if (list.length > 0) {
+          const wb = await loadWorkbook(list[0]!.id);
+          if (wb) {
+            api.replaceWorkbook(wb);
+            return;
+          }
+        }
+        // No workbooks yet — create and save a default one
+        const seed = newBlankWorkbook("wb-default");
+        await saveWorkbook(seed);
+        api.replaceWorkbook(seed);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setBootError(`Could not reach API at /api: ${msg}`);
+      }
+    })();
+    // api is a stable reference of callbacks; safe to omit
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // --- Autosave with debounce ---
+  const lastSavedRef = useRef<string | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (bootError) return;
+    const serialized = JSON.stringify(api.workbook);
+    if (lastSavedRef.current === serialized) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      void persist(api.workbook, serialized);
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api.workbook, bootError]);
+
+  async function persist(wb: Workbook, serialized: string): Promise<void> {
+    setSaveState({ kind: "saving" });
+    try {
+      const meta = await saveWorkbook(wb);
+      lastSavedRef.current = serialized;
+      setSaveState({ kind: "saved", at: meta.updatedAt });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSaveState({ kind: "error", message: msg });
+    }
+  }
 
   const onPickFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -29,9 +94,13 @@ export function App() {
     }
   };
 
-  const status = busy
-    ? "Importing…"
-    : `${api.activeSheet.name} · ${api.activeSheet.rowCount.toLocaleString()} rows × ${api.activeSheet.colCount} cols`;
+  const selRaw = api.getRaw(selection.row, selection.col);
+  const selComputed = api.getComputed(selection.row, selection.col);
+  const status = bootError
+    ? bootError
+    : busy
+      ? "Importing…"
+      : `${api.activeSheet.name} · ${api.activeSheet.rowCount.toLocaleString()} rows × ${api.activeSheet.colCount} cols`;
 
   return (
     <div className="app">
@@ -46,6 +115,7 @@ export function App() {
             onChange={onPickFile}
           />
         </label>
+        <SaveIndicator state={saveState} />
         <span className="status">{status}</span>
       </div>
       <div className="formula-bar">
@@ -67,4 +137,26 @@ export function App() {
       <Grid api={api} selection={selection} onSelect={setSelection} />
     </div>
   );
+}
+
+function SaveIndicator({ state }: { state: SaveState }) {
+  let text = "";
+  let color = "var(--aicell-header-fg)";
+  if (state.kind === "saving") text = "Saving…";
+  else if (state.kind === "saved") text = `Saved ${formatTime(state.at)}`;
+  else if (state.kind === "error") {
+    text = `Save failed`;
+    color = "var(--aicell-error)";
+  }
+  if (!text) return null;
+  return (
+    <span style={{ fontSize: 12, color }} title={state.kind === "error" ? state.message : undefined}>
+      {text}
+    </span>
+  );
+}
+
+function formatTime(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleTimeString();
 }
