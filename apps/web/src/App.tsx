@@ -11,6 +11,7 @@ import { FormatToolbar } from "./FormatToolbar";
 import { FindReplace } from "./FindReplace";
 import { ConditionalFormatModal } from "./ConditionalFormatModal";
 import { CommentModal } from "./CommentModal";
+import { AuditPanel } from "./AuditPanel";
 import type { CellFormat } from "@aicell/shared";
 import {
   importSpreadsheetFile,
@@ -57,6 +58,7 @@ export function App() {
   const [findOpen, setFindOpen] = useState(false);
   const [cfOpen, setCfOpen] = useState(false);
   const [commentOpen, setCommentOpen] = useState(false);
+  const [auditOpen, setAuditOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formulaInputRef = useRef<HTMLInputElement>(null);
 
@@ -434,6 +436,7 @@ export function App() {
       label: "Help",
       items: [
         { kind: "item", label: "Function reference…", onClick: () => setPickerOpen(true) },
+        { kind: "item", label: "Audit formulas…", onClick: () => setAuditOpen(true) },
         { kind: "item", label: "About AiCell", onClick: () => alert("AiCell — AI-native spreadsheet. Ask Claude what you'd normally click for.") },
       ],
     },
@@ -571,7 +574,13 @@ export function App() {
       </div>
       <div className="main-area">
         <div className="grid-wrapper">
-          <Grid api={api} selection={selection} onSelect={setSelection} />
+          <Grid
+            api={api}
+            selection={selection}
+            onSelect={setSelection}
+            onSortColumn={sortActiveSheetByColumn}
+            onRemoveDupesInColumn={removeDuplicatesInColumn}
+          />
           <ChartStrip
             sheet={api.activeSheet}
             onRemove={(chartId) => api.removeChart(api.activeSheet.name, chartId)}
@@ -630,6 +639,18 @@ export function App() {
           onSave={(text) => api.setCellComment(api.activeSheet.name, anchor.row, anchor.col, text)}
           onClear={() => api.clearCellComment(api.activeSheet.name, anchor.row, anchor.col)}
           onClose={() => setCommentOpen(false)}
+        />
+      )}
+      {auditOpen && (
+        <AuditPanel
+          workbook={api.workbook}
+          getComputedAt={api.getComputedOnSheet}
+          onJumpTo={(sheetName, row, col) => {
+            const sheet = api.workbook.sheets.find((s) => s.name === sheetName);
+            if (sheet) api.setActiveSheet(sheet.id);
+            setSelection({ startRow: row, startCol: col, endRow: row, endCol: col });
+          }}
+          onClose={() => setAuditOpen(false)}
         />
       )}
     </div>
