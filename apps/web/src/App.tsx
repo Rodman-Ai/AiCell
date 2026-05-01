@@ -2,8 +2,10 @@ import { useState, useRef, useEffect, type ChangeEvent } from "react";
 import { a1, type Workbook } from "@aicell/shared";
 import { useWorkbook, newBlankWorkbook } from "./useWorkbook";
 import { Grid } from "./Grid";
-import { importCsvFile } from "./csv";
-import { listWorkbooks, loadWorkbook, saveWorkbook } from "./api";
+import { SidePanel } from "./SidePanel";
+import { SheetTabs } from "./SheetTabs";
+import { importSpreadsheetFile } from "./csv";
+import { listWorkbooks, loadWorkbook, saveWorkbook, getHealth } from "./api";
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
@@ -19,15 +21,19 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>({ kind: "idle" });
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- Boot: load most-recent workbook from API, or seed a new one ---
+  // --- Boot: probe AI availability + load most-recent workbook ---
   const bootedRef = useRef(false);
   useEffect(() => {
     if (bootedRef.current) return;
     bootedRef.current = true;
     (async () => {
       try {
+        const health = await getHealth();
+        setAiEnabled(health.ai);
         const list = await listWorkbooks();
         if (list.length > 0) {
           const wb = await loadWorkbook(list[0]!.id);
@@ -36,7 +42,6 @@ export function App() {
             return;
           }
         }
-        // No workbooks yet — create and save a default one
         const seed = newBlankWorkbook("wb-default");
         await saveWorkbook(seed);
         api.replaceWorkbook(seed);
@@ -45,7 +50,6 @@ export function App() {
         setBootError(`Could not reach API at /api: ${msg}`);
       }
     })();
-    // api is a stable reference of callbacks; safe to omit
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -84,10 +88,13 @@ export function App() {
     setBusy(true);
     try {
       const t0 = performance.now();
-      const sheet = await importCsvFile(file);
-      api.loadSheet(sheet);
+      const sheets = await importSpreadsheetFile(file);
+      // First sheet replaces; remaining sheets are added
+      const [first, ...rest] = sheets;
+      if (first) api.loadSheet(first);
+      for (const s of rest) api.loadSheet(s);
       const ms = (performance.now() - t0).toFixed(0);
-      console.info(`Imported ${file.name} in ${ms}ms`);
+      console.info(`Imported ${file.name} (${sheets.length} sheet${sheets.length === 1 ? "" : "s"}) in ${ms}ms`);
     } finally {
       setBusy(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -103,18 +110,25 @@ export function App() {
       : `${api.activeSheet.name} · ${api.activeSheet.rowCount.toLocaleString()} rows × ${api.activeSheet.colCount} cols`;
 
   return (
-    <div className="app">
+    <div className={`app${panelOpen ? " with-panel" : ""}`}>
       <div className="toolbar">
         <h1>AiCell</h1>
         <label>
-          Import CSV
+          Import
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,.tsv,text/csv,text/tab-separated-values"
+            accept=".csv,.tsv,.xlsx,.xls,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             onChange={onPickFile}
           />
         </label>
+        <button
+          className="ask-claude"
+          onClick={() => setPanelOpen((v) => !v)}
+          title={aiEnabled ? "Ask Claude" : "AI is not configured"}
+        >
+          {panelOpen ? "Close panel" : "Ask Claude"}
+        </button>
         <SaveIndicator state={saveState} />
         <span className="status">{status}</span>
       </div>
@@ -134,7 +148,24 @@ export function App() {
           }
         />
       </div>
-      <Grid api={api} selection={selection} onSelect={setSelection} />
+      <div className="main-area">
+        <div className="grid-wrapper">
+          <Grid api={api} selection={selection} onSelect={setSelection} />
+          <SheetTabs
+            sheets={api.workbook.sheets}
+            activeId={api.activeSheet.id}
+            onSelect={api.setActiveSheet}
+            onAdd={api.addSheet}
+          />
+        </div>
+        {panelOpen && (
+          <SidePanel
+            workbook={api.workbook}
+            aiEnabled={aiEnabled}
+            onClose={() => setPanelOpen(false)}
+          />
+        )}
+      </div>
     </div>
   );
 }
