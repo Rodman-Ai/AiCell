@@ -6,10 +6,11 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { colLetters, type CellFormat } from "@aicell/shared";
+import { colLetters, type CellFormat, type CellComment } from "@aicell/shared";
 import type { WorkbookApi } from "./useWorkbook";
 import { normalizeRange, rangeContains, type Range } from "./clipboard";
 import { formatToStyle, formatValue } from "./format";
+import { resolveFormat } from "./conditional";
 
 const ROW_HEIGHT = 24;
 const DEFAULT_COL_WIDTH = 100;
@@ -23,7 +24,7 @@ type Props = {
 };
 
 export function Grid({ api, selection, onSelect }: Props) {
-  const { activeSheet, getRaw, getComputed, getCellFormat, setCell, version, setColWidth } = api;
+  const { activeSheet, getRaw, getComputed, getCellFormat, getCellComment, setCell, version, setColWidth } = api;
   const parentRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<{ row: number; col: number; draft: string } | null>(null);
   const [resizing, setResizing] = useState<{ col: number; startX: number; startWidth: number } | null>(null);
@@ -292,7 +293,9 @@ export function Grid({ api, selection, onSelect }: Props) {
                   width={widthOf(c)}
                   isAnchor={selection.startRow === r && selection.startCol === c}
                   inSelection={rangeContains(selection, r, c)}
-                  format={getCellFormat(r, c)}
+                  baseFormat={getCellFormat(r, c)}
+                  comment={getCellComment(r, c)}
+                  conditionalRules={activeSheet.conditionalRules}
                   editing={editing && editing.row === r && editing.col === c ? editing : null}
                   versionTick={version}
                   getRaw={getRaw}
@@ -321,7 +324,9 @@ type CellProps = {
   width: number;
   isAnchor: boolean;
   inSelection: boolean;
-  format: CellFormat | undefined;
+  baseFormat: CellFormat | undefined;
+  comment: CellComment | undefined;
+  conditionalRules: import("@aicell/shared").ConditionalRule[] | undefined;
   editing: { row: number; col: number; draft: string } | null;
   versionTick: number;
   getRaw: (row: number, col: number) => string;
@@ -340,7 +345,9 @@ function CellView({
   width,
   isAnchor,
   inSelection,
-  format,
+  baseFormat,
+  comment,
+  conditionalRules,
   editing,
   versionTick,
   getRaw,
@@ -355,6 +362,7 @@ function CellView({
   void versionTick;
   const computed = getComputed(row, col);
   const raw = getRaw(row, col);
+  const format = resolveFormat(baseFormat, conditionalRules, row, col, raw, computed.value);
   const display =
     computed.error !== undefined
       ? computed.error
@@ -400,11 +408,17 @@ function CellView({
     .filter(Boolean)
     .join(" ");
 
+  const tooltip = comment
+    ? `Comment: ${comment.text}${raw && raw !== display ? `\n${raw}` : ""}`
+    : raw && raw !== display
+      ? raw
+      : undefined;
+
   return (
     <div
-      className={cls}
+      className={`${cls}${comment ? " has-comment" : ""}`}
       style={{ width, ...fmtStyle }}
-      title={raw && raw !== display ? raw : undefined}
+      title={tooltip}
       onMouseDown={(e) => onMouseDown(row, col, e)}
       onMouseEnter={(e) => onMouseEnter(row, col, e)}
       onDoubleClick={() => onBeginEdit(row, col)}

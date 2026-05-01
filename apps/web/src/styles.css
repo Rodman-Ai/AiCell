@@ -804,6 +804,229 @@ body,
   cursor: not-allowed;
 }
 
+/* Conditional formatting modal */
+.cf-modal {
+  width: 560px;
+  max-width: 90vw;
+}
+
+.cf-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.cf-body h4 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--aicell-header-fg);
+}
+
+.cf-add,
+.cf-list {
+  border: 1px solid var(--aicell-border);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.cf-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.cf-row:last-child {
+  margin-bottom: 0;
+}
+
+.cf-label {
+  font-size: 12px;
+  color: var(--aicell-header-fg);
+  min-width: 56px;
+}
+
+.cf-row input {
+  flex: 1;
+  border: 1px solid var(--aicell-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.cf-row .fmt-select {
+  flex: 1;
+  height: 26px;
+}
+
+.cf-preview {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--aicell-border);
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.cf-preview.small {
+  padding: 1px 6px;
+}
+
+.cf-row-actions {
+  margin-top: 4px;
+}
+
+.cf-range {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--aicell-row-alt);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.cf-add-btn {
+  margin-left: auto;
+  background: #2563eb;
+  color: white;
+  border: 1px solid #2563eb;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cf-add-btn:hover {
+  background: #1d4ed8;
+}
+
+.cf-empty {
+  font-size: 12px;
+  color: var(--aicell-header-fg);
+  font-style: italic;
+}
+
+.cf-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cf-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--aicell-border);
+  font-size: 12px;
+}
+
+.cf-item:last-child {
+  border-bottom: none;
+}
+
+.cf-item code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--aicell-row-alt);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.cf-item-cond {
+  flex: 1;
+  color: var(--aicell-header-fg);
+}
+
+.cf-item button {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--aicell-header-fg);
+  padding: 0 4px;
+}
+
+/* Comment indicator + modal */
+.grid-cell.has-comment::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 6px 6px 0;
+  border-color: transparent #ef4444 transparent transparent;
+}
+
+.grid-cell.has-comment {
+  position: relative;
+}
+
+.comment-modal {
+  width: 360px;
+  max-width: 90vw;
+}
+
+.comment-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.comment-body textarea {
+  border: 1px solid var(--aicell-border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.comment-meta {
+  font-size: 11px;
+  color: var(--aicell-header-fg);
+}
+
+.comment-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.comment-actions button {
+  padding: 5px 12px;
+  border: 1px solid var(--aicell-border);
+  background: white;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.comment-actions button.primary {
+  background: #2563eb;
+  color: white;
+  border-color: #2563eb;
+}
+
+.comment-actions button.primary:hover {
+  background: #1d4ed8;
+}
+
 /* Modal shell (function picker, etc.) */
 .modal-backdrop {
   position: fixed;

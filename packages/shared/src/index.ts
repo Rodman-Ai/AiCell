@@ -36,6 +36,41 @@ export type Cell = {
   /** Raw user input — formulas start with "=" */
   raw: string;
   format?: CellFormat;
+  comment?: CellComment;
+};
+
+export type CellComment = {
+  text: string;
+  /** Optional author display name. */
+  author?: string;
+  /** Unix ms when last edited. */
+  ts: number;
+};
+
+export type RangeBounds = {
+  startRow: number;
+  startCol: number;
+  endRow: number;
+  endCol: number;
+};
+
+export type CFCondition =
+  | { type: "greaterThan"; value: number }
+  | { type: "greaterThanOrEqual"; value: number }
+  | { type: "lessThan"; value: number }
+  | { type: "lessThanOrEqual"; value: number }
+  | { type: "equals"; value: string }
+  | { type: "notEquals"; value: string }
+  | { type: "between"; min: number; max: number }
+  | { type: "contains"; text: string; matchCase?: boolean }
+  | { type: "isEmpty" }
+  | { type: "isNotEmpty" };
+
+export type ConditionalRule = {
+  id: string;
+  range: RangeBounds;
+  condition: CFCondition;
+  style: Partial<CellFormat>;
 };
 
 export type ChartType = "bar" | "line" | "area" | "pie" | "scatter";
@@ -59,6 +94,8 @@ export type Sheet = {
   charts?: ChartSpec[];
   /** Per-column widths in pixels. Sparse — missing entries use the default width. */
   colWidths?: Record<number, number>;
+  /** Conditional formatting rules evaluated in order; first match wins. */
+  conditionalRules?: ConditionalRule[];
 };
 
 export type Workbook = {

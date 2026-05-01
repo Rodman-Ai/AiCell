@@ -9,6 +9,8 @@ import { MenuBar, type MenuSpec } from "./MenuBar";
 import { FunctionPicker } from "./FunctionPicker";
 import { FormatToolbar } from "./FormatToolbar";
 import { FindReplace } from "./FindReplace";
+import { ConditionalFormatModal } from "./ConditionalFormatModal";
+import { CommentModal } from "./CommentModal";
 import type { CellFormat } from "@aicell/shared";
 import {
   importSpreadsheetFile,
@@ -53,6 +55,8 @@ export function App() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
+  const [cfOpen, setCfOpen] = useState(false);
+  const [commentOpen, setCommentOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formulaInputRef = useRef<HTMLInputElement>(null);
 
@@ -387,6 +391,7 @@ export function App() {
         { kind: "item", label: "Align center", onClick: () => applyFormatPatch({ align: "center" }) },
         { kind: "item", label: "Align right", onClick: () => applyFormatPatch({ align: "right" }) },
         { kind: "separator" },
+        { kind: "item", label: "Conditional formatting…", onClick: () => setCfOpen(true) },
         { kind: "item", label: "Clear formatting", onClick: clearFormatRange },
       ],
     },
@@ -394,6 +399,7 @@ export function App() {
       label: "Insert",
       items: [
         { kind: "item", label: "Sheet", onClick: api.addSheet },
+        { kind: "item", label: "Comment on selected cell…", onClick: () => setCommentOpen(true) },
         { kind: "separator" },
         {
           kind: "item",
@@ -605,6 +611,25 @@ export function App() {
             setSelection({ startRow: row, startCol: col, endRow: row, endCol: col })
           }
           onApply={(sheetName, edits) => api.setCellsOnSheetBatch(sheetName, edits)}
+        />
+      )}
+      {cfOpen && (
+        <ConditionalFormatModal
+          rules={api.activeSheet.conditionalRules ?? []}
+          selection={selection}
+          onAdd={(rule) => api.addConditionalRule(api.activeSheet.name, rule)}
+          onRemove={(id) => api.removeConditionalRule(api.activeSheet.name, id)}
+          onClose={() => setCfOpen(false)}
+        />
+      )}
+      {commentOpen && (
+        <CommentModal
+          row={anchor.row}
+          col={anchor.col}
+          current={api.getCellComment(anchor.row, anchor.col)}
+          onSave={(text) => api.setCellComment(api.activeSheet.name, anchor.row, anchor.col, text)}
+          onClear={() => api.clearCellComment(api.activeSheet.name, anchor.row, anchor.col)}
+          onClose={() => setCommentOpen(false)}
         />
       )}
     </div>
