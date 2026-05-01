@@ -14,6 +14,16 @@ export type Cell = {
   raw: string;
 };
 
+export type ChartType = "bar" | "line" | "area" | "pie" | "scatter";
+
+export type ChartSpec = {
+  id: string;
+  title: string;
+  type: ChartType;
+  /** A1-style range, e.g. "A1:B10". First row treated as header, first column as labels. */
+  range: string;
+};
+
 export type Sheet = {
   id: SheetId;
   name: string;
@@ -21,6 +31,8 @@ export type Sheet = {
   cells: Record<string, Cell>;
   rowCount: number;
   colCount: number;
+  /** Charts attached to this sheet. Optional for backwards compat with older workbooks. */
+  charts?: ChartSpec[];
 };
 
 export type Workbook = {

@@ -3,6 +3,7 @@ import { CalcEngine, aiRegistry, type CellComputed } from "@aicell/calc";
 import {
   type Workbook,
   type Sheet,
+  type ChartSpec,
   cellKey,
 } from "@aicell/shared";
 import { callAiCell } from "./api";
@@ -22,6 +23,11 @@ export type WorkbookApi = {
   loadSheet: (sheet: Sheet) => void;
   replaceWorkbook: (wb: Workbook) => void;
   addSheet: () => void;
+  /** Plan-apply helpers — used by the agent panel. */
+  setCellOnSheet: (sheetName: string, row: number, col: number, raw: string) => void;
+  addSheetByName: (name: string) => void;
+  addChart: (sheetName: string, spec: Omit<ChartSpec, "id">) => void;
+  removeChart: (sheetName: string, chartId: string) => void;
 };
 
 const newBlankSheet = (): Sheet => ({
@@ -161,6 +167,79 @@ export function useWorkbook(): WorkbookApi {
     });
   }, []);
 
+  const addSheetByName = useCallback((name: string) => {
+    setWorkbook((wb) => {
+      // If a sheet with that name already exists, just activate it
+      const existing = wb.sheets.find((s) => s.name === name);
+      if (existing) {
+        setActiveSheetId(existing.id);
+        return wb;
+      }
+      const id = `sheet-${Date.now()}-${wb.sheets.length}`;
+      const sheet: Sheet = { id, name, cells: {}, rowCount: 1000, colCount: 26 };
+      getEngine().loadSheet(sheet);
+      setActiveSheetId(id);
+      setVersion((v) => v + 1);
+      return { ...wb, sheets: [...wb.sheets, sheet] };
+    });
+  }, []);
+
+  const setCellOnSheet = useCallback(
+    (sheetName: string, row: number, col: number, raw: string) => {
+      const key = cellKey(row, col);
+      setWorkbook((wb) => {
+        const sheets = wb.sheets.map((s) => {
+          if (s.name !== sheetName) return s;
+          const cells = { ...s.cells };
+          if (raw === "") delete cells[key];
+          else cells[key] = { raw };
+          return {
+            ...s,
+            cells,
+            rowCount: Math.max(s.rowCount, row + 1),
+            colCount: Math.max(s.colCount, col + 1),
+          };
+        });
+        return { ...wb, sheets };
+      });
+      try {
+        getEngine().setCell(sheetName, row, col, raw);
+      } catch {
+        // Sheet may not exist in engine yet (just-created); skip silently
+      }
+      setVersion((v) => v + 1);
+    },
+    []
+  );
+
+  const addChart = useCallback(
+    (sheetName: string, spec: Omit<ChartSpec, "id">) => {
+      const id = `chart-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setWorkbook((wb) => {
+        const sheets = wb.sheets.map((s) => {
+          if (s.name !== sheetName) return s;
+          const charts = [...(s.charts ?? []), { id, ...spec }];
+          return { ...s, charts };
+        });
+        return { ...wb, sheets };
+      });
+      setVersion((v) => v + 1);
+    },
+    []
+  );
+
+  const removeChart = useCallback((sheetName: string, chartId: string) => {
+    setWorkbook((wb) => {
+      const sheets = wb.sheets.map((s) => {
+        if (s.name !== sheetName) return s;
+        const charts = (s.charts ?? []).filter((c) => c.id !== chartId);
+        return { ...s, charts };
+      });
+      return { ...wb, sheets };
+    });
+    setVersion((v) => v + 1);
+  }, []);
+
   return {
     workbook,
     activeSheet,
@@ -172,5 +251,9 @@ export function useWorkbook(): WorkbookApi {
     loadSheet,
     replaceWorkbook,
     addSheet,
+    addSheetByName,
+    setCellOnSheet,
+    addChart,
+    removeChart,
   };
 }

@@ -1,4 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { AgentLLM } from "./agent";
+import { AnthropicAgentLLM } from "./agent";
 
 /**
  * Minimal interface we need from a Claude client. Real client uses the SDK;
@@ -37,10 +39,17 @@ class RealClaudeClient implements ClaudeClient {
   }
 }
 
-export function createClaudeClient(): ClaudeClient | null {
+export function createClaudeClient(): {
+  claude: ClaudeClient | null;
+  agent: AgentLLM | null;
+} {
   const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return null;
-  return new RealClaudeClient(new Anthropic({ apiKey: key }));
+  if (!key) return { claude: null, agent: null };
+  const sdk = new Anthropic({ apiKey: key });
+  return {
+    claude: new RealClaudeClient(sdk),
+    agent: new AnthropicAgentLLM(sdk),
+  };
 }
 
 export const MODELS = {

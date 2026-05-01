@@ -4,6 +4,7 @@ import { useWorkbook, newBlankWorkbook } from "./useWorkbook";
 import { Grid } from "./Grid";
 import { SidePanel } from "./SidePanel";
 import { SheetTabs } from "./SheetTabs";
+import { ChartStrip } from "./ChartStrip";
 import { importSpreadsheetFile } from "./csv";
 import { listWorkbooks, loadWorkbook, saveWorkbook, getHealth } from "./api";
 
@@ -151,6 +152,10 @@ export function App() {
       <div className="main-area">
         <div className="grid-wrapper">
           <Grid api={api} selection={selection} onSelect={setSelection} />
+          <ChartStrip
+            sheet={api.activeSheet}
+            onRemove={(chartId) => api.removeChart(api.activeSheet.name, chartId)}
+          />
           <SheetTabs
             sheets={api.workbook.sheets}
             activeId={api.activeSheet.id}
@@ -163,6 +168,9 @@ export function App() {
             workbook={api.workbook}
             aiEnabled={aiEnabled}
             onClose={() => setPanelOpen(false)}
+            onApplySetCell={api.setCellOnSheet}
+            onApplyAddSheet={api.addSheetByName}
+            onApplyAddChart={api.addChart}
           />
         )}
       </div>
