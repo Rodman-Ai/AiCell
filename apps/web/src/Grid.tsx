@@ -1,4 +1,5 @@
 import {
+  memo,
   useRef,
   useState,
   useCallback,
@@ -70,6 +71,11 @@ export function Grid({ api, selection, onSelect, onSortColumn, onRemoveDupesInCo
 
   const cancelEdit = useCallback(() => setEditing(null), []);
 
+  const onChangeDraft = useCallback(
+    (v: string) => setEditing((prev) => (prev ? { ...prev, draft: v } : prev)),
+    []
+  );
+
   const handleCellKeyDown = useCallback(
     (e: KeyboardEvent<HTMLDivElement>) => {
       if (editing) return;
@@ -131,6 +137,13 @@ export function Grid({ api, selection, onSelect, onSortColumn, onRemoveDupesInCo
     },
     [editing, selection, activeSheet, onSelect, beginEdit, setCell]
   );
+
+  // Cancel any in-progress edit when selection moves off the editing cell.
+  useEffect(() => {
+    if (editing && !rangeContains(selection, editing.row, editing.col)) {
+      setEditing(null);
+    }
+  }, [selection, editing]);
 
   // Mouse drag-to-select state
   const dragRef = useRef<{ startRow: number; startCol: number } | null>(null);
@@ -335,9 +348,7 @@ export function Grid({ api, selection, onSelect, onSortColumn, onRemoveDupesInCo
                   onMouseDown={onCellMouseDown}
                   onMouseEnter={onCellMouseEnter}
                   onBeginEdit={beginEdit}
-                  onChangeDraft={(v) =>
-                    setEditing((prev) => (prev ? { ...prev, draft: v } : prev))
-                  }
+                  onChangeDraft={onChangeDraft}
                   onCommit={commitEdit}
                   onCancel={cancelEdit}
                 />
@@ -371,7 +382,32 @@ type CellProps = {
   onCancel: () => void;
 };
 
-function CellView({
+const CellView = memo(CellViewImpl, areCellPropsEqual);
+
+function areCellPropsEqual(prev: CellProps, next: CellProps): boolean {
+  return (
+    prev.row === next.row &&
+    prev.col === next.col &&
+    prev.width === next.width &&
+    prev.isAnchor === next.isAnchor &&
+    prev.inSelection === next.inSelection &&
+    prev.baseFormat === next.baseFormat &&
+    prev.comment === next.comment &&
+    prev.conditionalRules === next.conditionalRules &&
+    prev.editing === next.editing &&
+    prev.versionTick === next.versionTick &&
+    prev.getRaw === next.getRaw &&
+    prev.getComputed === next.getComputed &&
+    prev.onMouseDown === next.onMouseDown &&
+    prev.onMouseEnter === next.onMouseEnter &&
+    prev.onBeginEdit === next.onBeginEdit &&
+    prev.onChangeDraft === next.onChangeDraft &&
+    prev.onCommit === next.onCommit &&
+    prev.onCancel === next.onCancel
+  );
+}
+
+function CellViewImpl({
   row,
   col,
   width,

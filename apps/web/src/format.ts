@@ -8,13 +8,15 @@ export function formatValue(value: CellValue, fmt: NumberFormat | undefined, dec
   if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
   if (typeof value !== "number") return String(value);
 
+  // Non-finite values (NaN, +/-Infinity) skip every numeric format and
+  // render as a bare string so we never produce "$NaN" or "Infinity%".
+  if (!Number.isFinite(value)) return String(value);
+
   const fixed = (n: number) =>
-    Number.isFinite(n)
-      ? n.toLocaleString(undefined, {
-          minimumFractionDigits: decimals,
-          maximumFractionDigits: decimals,
-        })
-      : String(n);
+    n.toLocaleString(undefined, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
 
   switch (fmt) {
     case "number":
