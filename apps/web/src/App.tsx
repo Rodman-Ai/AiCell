@@ -40,6 +40,8 @@ const isMac =
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
 
+const ORIGIN_RANGE: Range = { startRow: 0, startCol: 0, endRow: 0, endCol: 0 };
+
 export function App() {
   const api = useWorkbook();
   const [selection, setSelection] = useState<Range>({
@@ -76,12 +78,14 @@ export function App() {
           const wb = await loadWorkbook(list[0]!.id);
           if (wb) {
             api.replaceWorkbook(wb);
+            setSelection(ORIGIN_RANGE);
             return;
           }
         }
         const seed = newBlankWorkbook("wb-default");
         await saveWorkbook(seed);
         api.replaceWorkbook(seed);
+        setSelection(ORIGIN_RANGE);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         setBootError(`Could not reach API at /api: ${msg}`);
@@ -307,7 +311,7 @@ export function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [api, onCopy, onCut, onPaste, insertTodayShortcut, insertNowShortcut, selectAll, applyFormatPatch, anchorFormat]);
+  }, [api, selection, onCopy, onCut, onPaste, insertTodayShortcut, insertNowShortcut, selectAll, applyFormatPatch, anchorFormat]);
 
   const triggerImport = () => fileInputRef.current?.click();
 
@@ -318,7 +322,10 @@ export function App() {
         {
           kind: "item",
           label: "New workbook",
-          onClick: () => api.replaceWorkbook(newBlankWorkbook(`wb-${Date.now()}`)),
+          onClick: () => {
+            api.replaceWorkbook(newBlankWorkbook(`wb-${Date.now()}`));
+            setSelection(ORIGIN_RANGE);
+          },
         },
         { kind: "item", label: "Import…", onClick: triggerImport },
         { kind: "separator" },

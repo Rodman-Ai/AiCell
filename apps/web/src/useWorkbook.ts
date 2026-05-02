@@ -228,38 +228,36 @@ export function useWorkbook(): WorkbookApi {
 
   const addSheet = useCallback(() => {
     pushHistory();
+    const id = `sheet-${Date.now()}`;
     setWorkbook((wb) => {
       const n = wb.sheets.length + 1;
-      const id = `sheet-${Date.now()}`;
       const name = `Sheet${n}`;
       const sheet: Sheet = { id, name, cells: {}, rowCount: 1000, colCount: 26 };
       getEngine().loadSheet(sheet);
-      setActiveSheetId(id);
-      setVersion((v) => v + 1);
       return { ...wb, sheets: [...wb.sheets, sheet] };
     });
+    setActiveSheetId(id);
+    setVersion((v) => v + 1);
   }, [pushHistory]);
 
   const addSheetByName = useCallback(
     (name: string) => {
-      let didPushHistory = false;
-      setWorkbook((wb) => {
-        const existing = wb.sheets.find((s) => s.name === name);
-        if (existing) {
-          setActiveSheetId(existing.id);
-          return wb;
-        }
-        if (!didPushHistory) {
-          pushHistory();
-          didPushHistory = true;
-        }
-        const id = `sheet-${Date.now()}-${wb.sheets.length}`;
+      const wb = workbookRef.current;
+      const existing = wb.sheets.find((s) => s.name === name);
+      if (existing) {
+        setActiveSheetId(existing.id);
+        return;
+      }
+      pushHistory();
+      const id = `sheet-${Date.now()}-${wb.sheets.length}`;
+      setWorkbook((cur) => {
+        if (cur.sheets.some((s) => s.name === name)) return cur;
         const sheet: Sheet = { id, name, cells: {}, rowCount: 1000, colCount: 26 };
         getEngine().loadSheet(sheet);
-        setActiveSheetId(id);
-        setVersion((v) => v + 1);
-        return { ...wb, sheets: [...wb.sheets, sheet] };
+        return { ...cur, sheets: [...cur.sheets, sheet] };
       });
+      setActiveSheetId(id);
+      setVersion((v) => v + 1);
     },
     [pushHistory]
   );
@@ -540,6 +538,7 @@ export function useWorkbook(): WorkbookApi {
         });
         return { ...wb, sheets };
       });
+      setVersion((v) => v + 1);
     },
     [pushHistory]
   );

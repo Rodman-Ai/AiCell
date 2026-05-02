@@ -5,6 +5,7 @@ import type {
   ConditionalRule,
   RangeBounds,
 } from "@aicell/shared";
+import { a1 } from "@aicell/shared";
 
 export function rangeBoundsContains(r: RangeBounds, row: number, col: number): boolean {
   return (
@@ -32,7 +33,7 @@ export function matchesCondition(condition: CFCondition, raw: string, value: Cel
     case "equals":
       return text === condition.value;
     case "notEquals":
-      return text !== condition.value && (text !== "" || raw !== "");
+      return text !== condition.value;
     case "between":
       return hasNum && num >= condition.min && num <= condition.max;
     case "contains": {
@@ -73,24 +74,10 @@ export function resolveFormat(
 
 /** Short label like "A1:B10" for displaying a range. */
 export function rangeBoundsToA1(r: RangeBounds): string {
-  const norm = {
-    startRow: Math.min(r.startRow, r.endRow),
-    endRow: Math.max(r.startRow, r.endRow),
-    startCol: Math.min(r.startCol, r.endCol),
-    endCol: Math.max(r.startCol, r.endCol),
-  };
-  const colLet = (c: number): string => {
-    let n = c;
-    let s = "";
-    while (n >= 0) {
-      s = String.fromCharCode(65 + (n % 26)) + s;
-      n = Math.floor(n / 26) - 1;
-    }
-    return s;
-  };
-  const a1 = (row: number, col: number) => `${colLet(col)}${row + 1}`;
-  if (norm.startRow === norm.endRow && norm.startCol === norm.endCol) {
-    return a1(norm.startRow, norm.startCol);
-  }
-  return `${a1(norm.startRow, norm.startCol)}:${a1(norm.endRow, norm.endCol)}`;
+  const startRow = Math.min(r.startRow, r.endRow);
+  const endRow = Math.max(r.startRow, r.endRow);
+  const startCol = Math.min(r.startCol, r.endCol);
+  const endCol = Math.max(r.startCol, r.endCol);
+  if (startRow === endRow && startCol === endCol) return a1(startRow, startCol);
+  return `${a1(startRow, startCol)}:${a1(endRow, endCol)}`;
 }
