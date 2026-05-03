@@ -187,17 +187,25 @@ export function Grid({ api, selection, onSelect, onSortColumn, onRemoveDupesInCo
     return () => window.removeEventListener("mouseup", onUp);
   }, []);
 
-  // Column resize drag
+  // Column resize drag. Uses a ref for the draft width so the effect's
+  // mousemove/mouseup handlers register once per drag, not per pixel.
+  const draftWidthRef = useRef<{ col: number; width: number } | null>(null);
+  useEffect(() => {
+    draftWidthRef.current = draftWidth;
+  }, [draftWidth]);
+
   useEffect(() => {
     if (!resizing) return;
+    const { col, startX, startWidth } = resizing;
     const onMove = (e: MouseEvent) => {
-      const dx = e.clientX - resizing.startX;
-      const w = Math.max(MIN_COL_WIDTH, resizing.startWidth + dx);
-      setDraftWidth({ col: resizing.col, width: w });
+      const dx = e.clientX - startX;
+      const w = Math.max(MIN_COL_WIDTH, startWidth + dx);
+      setDraftWidth({ col, width: w });
     };
     const onUp = () => {
-      if (draftWidth && draftWidth.col === resizing.col) {
-        setColWidth(activeSheet.name, resizing.col, draftWidth.width);
+      const dw = draftWidthRef.current;
+      if (dw && dw.col === col) {
+        setColWidth(activeSheet.name, col, dw.width);
       }
       setResizing(null);
       setDraftWidth(null);
@@ -208,7 +216,7 @@ export function Grid({ api, selection, onSelect, onSortColumn, onRemoveDupesInCo
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, [resizing, draftWidth, activeSheet.name, setColWidth]);
+  }, [resizing, activeSheet.name, setColWidth]);
 
   // Auto-focus the grid container so keyboard works after CSV import
   useEffect(() => {
@@ -247,6 +255,8 @@ export function Grid({ api, selection, onSelect, onSortColumn, onRemoveDupesInCo
     [onSelect, activeSheet.colCount]
   );
 
+  const chevronTriggerRef = useRef<HTMLButtonElement | null>(null);
+
   return (
     <div
       className="grid-container"
@@ -268,9 +278,16 @@ export function Grid({ api, selection, onSelect, onSortColumn, onRemoveDupesInCo
               type="button"
               className="col-chevron"
               aria-label={`Column ${colLetters(c)} actions`}
+              aria-haspopup="menu"
+              aria-expanded={chevronCol === c}
               onClick={(e) => {
                 e.stopPropagation();
-                setChevronCol((cur) => (cur === c ? null : c));
+                if (chevronCol === c) {
+                  setChevronCol(null);
+                } else {
+                  chevronTriggerRef.current = e.currentTarget;
+                  setChevronCol(c);
+                }
               }}
             >
               ▾
@@ -278,18 +295,24 @@ export function Grid({ api, selection, onSelect, onSortColumn, onRemoveDupesInCo
             {chevronCol === c && (
               <ColChevronPopup
                 col={c}
-                onClose={() => setChevronCol(null)}
+                onClose={() => {
+                  setChevronCol(null);
+                  chevronTriggerRef.current?.focus();
+                }}
                 onSortAsc={() => {
                   onSortColumn(c, true);
                   setChevronCol(null);
+                  chevronTriggerRef.current?.focus();
                 }}
                 onSortDesc={() => {
                   onSortColumn(c, false);
                   setChevronCol(null);
+                  chevronTriggerRef.current?.focus();
                 }}
                 onDedupe={() => {
                   onRemoveDupesInColumn(c);
                   setChevronCol(null);
+                  chevronTriggerRef.current?.focus();
                 }}
               />
             )}
@@ -526,7 +549,13 @@ function ColChevronPopup({
     };
   }, [onClose]);
   return (
-    <div className="col-chevron-popup" ref={ref} onClick={(e) => e.stopPropagation()}>
+    <div
+      className="col-chevron-popup"
+      ref={ref}
+      role="menu"
+      aria-label="Column actions"
+      onClick={(e) => e.stopPropagation()}
+    >
       <button type="button" onClick={onSortAsc}>Sort A → Z</button>
       <button type="button" onClick={onSortDesc}>Sort Z → A</button>
       <hr />

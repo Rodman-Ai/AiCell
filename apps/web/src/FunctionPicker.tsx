@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FUNCTIONS, FUNCTION_CATEGORIES, type FunctionEntry } from "./functions";
+import { useReturnFocusOnClose } from "./useReturnFocusOnClose";
 
 type Props = {
   onPick: (entry: FunctionEntry) => void;
@@ -7,6 +8,7 @@ type Props = {
 };
 
 export function FunctionPicker({ onPick, onClose }: Props) {
+  useReturnFocusOnClose();
   const [query, setQuery] = useState("");
   const [activeIdx, setActiveIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);

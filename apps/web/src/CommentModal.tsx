@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CellComment } from "@aicell/shared";
 import { a1 } from "@aicell/shared";
+import { useReturnFocusOnClose } from "./useReturnFocusOnClose";
 
 type Props = {
   row: number;
@@ -12,6 +13,7 @@ type Props = {
 };
 
 export function CommentModal({ row, col, current, onSave, onClear, onClose }: Props) {
+  useReturnFocusOnClose();
   const [text, setText] = useState(current?.text ?? "");
   const ref = useRef<HTMLTextAreaElement>(null);
 

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { Workbook } from "@aicell/shared";
 import { a1 } from "@aicell/shared";
 import type { CellComputed } from "@aicell/calc";
+import { useReturnFocusOnClose } from "./useReturnFocusOnClose";
 
 export type AuditFinding = {
   sheetName: string;
@@ -20,6 +21,7 @@ type Props = {
 };
 
 export function AuditPanel({ workbook, getComputedAt, onJumpTo, onClose }: Props) {
+  useReturnFocusOnClose();
   const findings = useMemo<AuditFinding[]>(() => {
     const out: AuditFinding[] = [];
     for (const sheet of workbook.sheets) {
