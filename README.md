@@ -15,13 +15,21 @@ docs/              Strategy docs (competitor analysis, features, roadmap)
 
 ## What's built
 
-- **Spreadsheet**: virtualized grid, multi-sheet workbooks, CSV/XLSX import, ~400 Excel-compatible formulas via HyperFormula.
+- **Grid UX**: virtualized scroll, multi-sheet workbooks, range selection (drag, shift+arrows, click row/col headers for whole row/col), per-column resize, column-header chevron with sort and remove-duplicates.
+- **Menus**: File · Edit · View · Insert · Format · Data · Help, with keyboard shortcuts (⌘Z / ⌘⇧Z, ⌘C / ⌘X / ⌘V, ⌘B / ⌘I / ⌘U, ⌘F, ⌘A, ⌘/, ⌘; , ⌘⇧;, ⇧F3, Cmd+Home/End).
+- **Editing**: full undo/redo (snapshot history, 100 steps), copy/cut/paste with TSV expansion, find & replace (case-sensitive, replace-all as one undo step), CSV/XLSX import + export.
+- **Formatting**: cell-format model (bold, italic, underline, alignment, text/fill colors, number formats — General / Number / Currency / Percent / Date / Datetime), format toolbar above the formula bar.
+- **Conditional formatting**: 9 condition types (>, ≥, <, ≤, =, ≠, between, contains, empty/non-empty) × 5 preset styles, applied to ranges and resolved per-cell at render time.
+- **Comments**: per-cell text with a corner indicator and hover tooltip.
+- **Function picker**: Insert → Function… opens a searchable modal of the 50 most-used spreadsheet functions, click-to-insert.
+- **Audit panel**: Help → Audit formulas walks every formula in every sheet, lists evaluation errors, click a cell ref to jump.
+- **Formulas**: ~400 Excel-compatible functions via HyperFormula.
 - **AI cell functions**: `=AI`, `=CLASSIFY`, `=EXTRACT`, `=SUMMARIZE`, `=TRANSLATE`, `=SENTIMENT`, `=FORMULA` (Claude Haiku 4.5 with prompt caching).
-- **Plan-then-apply agent**: Claude Opus 4.7 with tool use proposes a plan (set_cell / add_sheet / create_chart) plus read-only audit/forecast helpers; user reviews and applies.
+- **Plan-then-apply agent**: Claude Opus 4.7 with tool use proposes a plan (set_cell / add_sheet / create_chart) plus read-only audit/forecast helpers; user reviews and applies. Side panel empty-state has five click-to-prefill example prompts.
 - **Charts**: bar / line / area / pie / scatter via Recharts, attached per-sheet.
 - **Persistence**: file-based store by default; Postgres adapter when `DATABASE_URL` is set.
 
-See [`docs/roadmap.md`](docs/roadmap.md) for the honest "shipped vs. deferred" status. Big deferred items: Yjs real-time collab, Python/SQL/JS code cells, all DB/SaaS connectors, voice, MCP, full enterprise/SSO.
+See [`docs/SHIPPED.md`](docs/SHIPPED.md) for the per-sprint changelog, [`docs/architecture.md`](docs/architecture.md) for how the pieces fit together, and [`docs/roadmap.md`](docs/roadmap.md) for "shipped vs. deferred". Big deferred items: freeze panes, data-validation dropdown, Yjs real-time collab, Python/SQL/JS code cells, DB/SaaS connectors, voice, MCP, full enterprise/SSO.
 
 ## Local development
 

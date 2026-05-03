@@ -2,22 +2,50 @@
 
 Feature numbers reference [`features.md`](./features.md).
 
-## Status snapshot (current branch)
+## Status snapshot
 
-This repo is mid-development on `claude/ai-excel-clone-features-QaAse`. Below is what's actually shipped vs. what's still deferred. Be honest with yourself: the original Phase 1 + 2 plan was a 9-month roadmap, and only a focused subset has been delivered so far.
+Branch `claude/review-gh-pages-deployment-2o9as` (rolling up to `main`). What follows is the honest "shipped vs. deferred" picture as of the post-Sprint-4 review (commit `3c9d6a3`). The original Phase 1 + 2 plan was a 9-month roadmap; we've delivered a focused subset.
+
+For the per-sprint changelog, see [`SHIPPED.md`](./SHIPPED.md). For the prioritized next-50, see [`top-50-features.md`](./top-50-features.md).
+
+### Sprints 1–4 (May 2026)
+
+Four feature sprints landed on top of the Phase-1 base. See [`SHIPPED.md`](./SHIPPED.md) for the full report.
+
+| Sprint | Commit | Headline |
+|---|---|---|
+| Pre-1 | `4296b06` | Menu bar, function picker, undo/redo, copy/paste, exports |
+| 1 | `4e3770c` | Range selection, column resize, expanded shortcuts |
+| 2 | `99941ad` | Cell formatting model + format toolbar, find & replace |
+| 3 | `a4bbc8d` | Conditional formatting, cell comments |
+| 4 | `8be066c` | Column-header chevrons, audit-formulas panel |
+| Review | `3c9d6a3` | 9 audit fixes + Range/RangeBounds dedupe |
 
 ### ✅ Shipped
 
-**Core grid & formulas** — features 1 (basic), 2, 3 (basic), 9 (basic), 12 (basic), 14 (basic), 16
+**Core grid & formulas** — features 1 (basic), 2, 3 (basic), 4 (most of), 9, 10, 11 (non-threaded), 12 (sort/dedupe), 16
 - Virtualized HTML/div grid via TanStack Virtual (canvas renderer is deferred)
 - Multi-sheet workbooks with tab UI (`apps/web/src/SheetTabs.tsx`)
-- Cells with raw input + computed value
-- Find/replace via browser default; basic filter/sort via formulas
+- Range selection (drag, shift-arrows, click row/col headers), column resize with persisted widths
+- Cell formatting model: bold, italic, underline, alignment, text/fill colors, number formats
+- Conditional formatting: 9 conditions × 5 preset styles, resolved per-cell at render
+- Per-cell comments with corner indicator
+- Full undo/redo via workbook-snapshot history (100 steps)
+- Find & replace (case-sensitive toggle, replace-all as one undo step)
+- Sort and remove-duplicates per column (menu + header chevron)
 - 400+ Excel-compatible functions through HyperFormula
 
-**Import** — feature 26
-- CSV, TSV (PapaParse) and XLSX (SheetJS), multi-sheet
+**Import / export** — features 26 + complement
+- CSV, TSV (PapaParse) and XLSX (SheetJS), multi-sheet import
+- CSV (active sheet) and XLSX (whole workbook) export
 - File: `apps/web/src/csv.ts`
+
+**Editing UX**
+- Menu bar (File · Edit · View · Insert · Format · Data · Help) with keyboard shortcuts
+- Format toolbar above the formula bar
+- Function picker (50 most-used functions, click-to-insert)
+- Audit-formulas panel (lists evaluation errors with click-to-jump)
+- TSV-correct copy/paste (Excel-style escaping; round-trip preserves embedded newlines/tabs/quotes)
 
 **Persistence** — feature carried from Phase 0
 - File-based store (JSON-on-disk, atomic write) and Postgres adapter behind a single `WorkbookStore` interface
@@ -45,12 +73,14 @@ This repo is mid-development on `claude/ai-excel-clone-features-QaAse`. Below is
 
 ### 🚧 Explicitly deferred (NOT shipped)
 
-These are real, non-trivial features. The previous turn over-promised by claiming "complete all remaining items"; in practice, each of the items below is days-to-weeks of work and was not attempted.
+These are real, non-trivial features. Each is days-to-weeks of work and is not yet attempted.
 
 | # | Feature | Why deferred |
 |---|---|---|
-| 4 | Full cell formatting (fonts, borders, conditional) | Multi-week UI surface |
-| 5–8, 10, 11, 13, 15 | Named ranges, full Tables, freeze panes, merge cells, undo branching, threaded comments, pivot tables, sparklines | Each non-trivial; not in the demo path |
+| 4 | Cell formatting: fonts, borders, font size, font family | Sprint 2 shipped the model + B/I/U/align/colors/number formats, but typography & borders need more UI surface |
+| 5–8, 13, 15 | Named ranges, full Tables, freeze panes, merge cells, pivot tables, sparklines | Each non-trivial; freeze panes was sized in Sprint 5 but punted on virtualizer-rewrite cost |
+| 11 | Threaded cell comments with @mentions | Sprint 3 shipped non-threaded comments only |
+| 14 | Data validation (lists, rules, custom formulas) | Sprint 5 partial typed but unwired; deferred for inline-dropdown UX work |
 | 17 | Dynamic arrays / spill ranges | Requires HyperFormula extension |
 | 18–21 | LAMBDA/LET, Python cells, SQL cells, JS cells | Pyodide + DuckDB-WASM + sandboxed JS — multi-week each |
 | 22–25 | Regex / FETCH / market data / geospatial functions | Each its own integration |
@@ -86,7 +116,7 @@ A usable web spreadsheet with the most magical AI features. Goal: an FP&A analys
 - **Features:** 1–17, 26, 36–37, 43–46, 51–55, 60, 61–62, 71, 73, 79, 80
 - **Hard cuts:** no Python/SQL cells yet, no enterprise SSO, only CSV/XLSX/Postgres connectors
 - **Exit criteria:** "build me a P&L from this CSV" works end-to-end via plan-and-apply; two browsers can edit live.
-- **Status:** 🟡 plan-and-apply works (Claude tool use); two-browser live edit (Yjs collab) is **not** done.
+- **Status:** 🟢 most of P0 is now done (range selection, formatting, conditional formatting, comments, find/replace, sort/dedupe, undo/redo, function picker, audit). Plan-and-apply works. Still missing: freeze panes, data validation list dropdown, full Tables, pivots, named ranges, two-browser live edit (Yjs collab).
 
 ### Phase 2 — V1 (Months 6–9)
 
@@ -112,10 +142,14 @@ Platform & enterprise. Goal: pass enterprise procurement and start moving teams 
 
 ## Suggested next units of work (rank-ordered)
 
-1. **Yjs collab** (#43, #44) — single biggest unlock for the "two browsers edit live" exit criterion of Phase 1.
-2. **Python/SQL cells via Pyodide + DuckDB-WASM** (#19, #20) — Quadratic's headline differentiator.
-3. **Manual chart-create UI** — currently you can only get a chart by asking the agent. Add a toolbar button.
-4. **Canvas grid renderer** — performance budget can't be hit with HTML divs once row counts get into the millions.
-5. **One DB connector** (#29 — Postgres) end-to-end with credential vault.
-6. **MCP tool surface** (#64) — enables agent to use the same connectors users see.
-7. **Persistence: smarter workbook state** — current store writes the entire workbook on every save; needs delta encoding.
+See [`top-50-features.md`](./top-50-features.md) for the prioritized 50-feature build list with effort estimates. The shortest list of immediate-next:
+
+1. **Freeze panes** (#7 in features.md / P0 #4 in top-50) — virtualizer rework needed; high user-noticed value.
+2. **Data validation list dropdown** (#14 / P0 #7 in top-50) — Sprint 5 typed but unwired; needs inline-dropdown UX in the virtualized grid.
+3. **Yjs collab** (#43, #44) — biggest unlock for the "two browsers edit live" Phase-1 exit criterion.
+4. **Python/SQL cells via Pyodide + DuckDB-WASM** (#19, #20) — Quadratic's headline differentiator.
+5. **Manual chart-create UI** — currently charts come only from the agent.
+6. **Canvas grid renderer** — perf budget for million-row sheets.
+7. **One DB connector** (#29 — Postgres) end-to-end with credential vault.
+8. **MCP tool surface** (#64) — enables agent to use the same connectors users see.
+9. **Persistence: smarter workbook state** — current store writes the entire workbook on every save; needs delta encoding.
