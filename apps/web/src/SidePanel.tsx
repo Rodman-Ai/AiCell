@@ -82,26 +82,30 @@ export function SidePanel({
   };
 
   const applyPlan = (turnIdx: number, selectedIdx: Set<number>) => {
-    setTurns((cur) => {
-      const turn = cur[turnIdx];
-      if (!turn || turn.kind !== "assistant" || !turn.plan) return cur;
-      for (let i = 0; i < turn.plan.length; i++) {
-        if (!selectedIdx.has(i)) continue;
-        const step = turn.plan[i]!;
-        if (step.tool === "add_sheet") {
-          onApplyAddSheet(step.args.name);
-        } else if (step.tool === "set_cell") {
-          onApplySetCell(step.args.sheet, step.args.row, step.args.col, step.args.raw);
-        } else if (step.tool === "create_chart") {
-          onApplyAddChart(step.args.sheet, {
-            title: step.args.title,
-            type: step.args.type,
-            range: step.args.range,
-          });
-        }
+    // Read state outside the updater so the side-effects below run exactly
+    // once even under React StrictMode's double-invoke of pure updaters.
+    const turn = turns[turnIdx];
+    if (!turn || turn.kind !== "assistant" || !turn.plan || turn.planApplied) return;
+    for (let i = 0; i < turn.plan.length; i++) {
+      if (!selectedIdx.has(i)) continue;
+      const step = turn.plan[i]!;
+      if (step.tool === "add_sheet") {
+        onApplyAddSheet(step.args.name);
+      } else if (step.tool === "set_cell") {
+        onApplySetCell(step.args.sheet, step.args.row, step.args.col, step.args.raw);
+      } else if (step.tool === "create_chart") {
+        onApplyAddChart(step.args.sheet, {
+          title: step.args.title,
+          type: step.args.type,
+          range: step.args.range,
+        });
       }
+    }
+    setTurns((cur) => {
+      const cur_turn = cur[turnIdx];
+      if (!cur_turn || cur_turn.kind !== "assistant") return cur;
       const updated = [...cur];
-      updated[turnIdx] = { ...turn, planApplied: true };
+      updated[turnIdx] = { ...cur_turn, planApplied: true };
       return updated;
     });
   };

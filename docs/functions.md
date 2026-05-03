@@ -81,12 +81,16 @@ The 50 most-used spreadsheet functions, all available in AiCell out of the box (
 
 These are unique to AiCell — they call Claude. Available when the API service is configured with `ANTHROPIC_API_KEY`.
 
-| Name | What it does |
-|---|---|
-| `AI(prompt, [range])` | Free-form Claude call with optional grid context. |
-| `CLASSIFY(text, labels)` | Few-shot categorization. |
-| `EXTRACT(text, schema)` | JSON entity extraction. |
-| `SUMMARIZE(range, [style])` | Summarize a range. |
-| `TRANSLATE(text, lang)` | Translate with auto-detect. |
-| `SENTIMENT(text)` | Score + label. |
-| `FORMULA(prompt)` | Natural-language → formula. |
+All seven functions use a single fixed-arity HyperFormula plugin (`packages/calc/src/ai-plugin.ts`); compose with `CONCAT`, `TEXTJOIN`, etc. to bring extra context into the prompt yourself.
+
+| Name | Signature | What it does | Returns |
+|---|---|---|---|
+| AI | `AI(prompt)` | Free-form Claude call. | One short string. |
+| CLASSIFY | `CLASSIFY(text, labels)` | Pick the best label. `labels` is a comma / semicolon / pipe-separated list. | One label from the list. |
+| EXTRACT | `EXTRACT(text, field)` | Pull one named field's value out of `text`. | The extracted value as a string. |
+| SUMMARIZE | `SUMMARIZE(text)` | One-paragraph summary of `text`. | Short summary string. |
+| TRANSLATE | `TRANSLATE(text, lang)` | Translate `text` into `lang` (e.g. "fr", "Spanish"). | Translated string. |
+| SENTIMENT | `SENTIMENT(text)` | Sentiment of `text`. | One of `"positive"`, `"negative"`, `"neutral"`. |
+| FORMULA | `FORMULA(description)` | Generate an Excel-style formula expression from a plain-English description. | A formula string like `=SUMIFS(...)` you can paste into a cell. |
+
+Cells return the sentinel `…` while a request is in flight; on completion the registry notifies the engine and the cell recalculates with the answer. Identical formulas across cells share one fetch via the prompt-hash cache. If the API service has no `ANTHROPIC_API_KEY`, every AI cell returns `#AI_DISABLED`.

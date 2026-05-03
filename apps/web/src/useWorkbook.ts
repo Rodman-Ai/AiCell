@@ -76,6 +76,17 @@ export const newBlankWorkbook = (id: string, name = "Untitled"): Workbook => ({
 const cloneWorkbook = (wb: Workbook): Workbook =>
   typeof structuredClone === "function" ? structuredClone(wb) : JSON.parse(JSON.stringify(wb));
 
+/** Suffix the proposed name with " (2)", " (3)", … until it doesn't collide. */
+function uniqueSheetName(proposed: string, existing: Sheet[]): string {
+  const taken = new Set(existing.map((s) => s.name));
+  if (!taken.has(proposed)) return proposed;
+  for (let n = 2; n < 1000; n++) {
+    const candidate = `${proposed} (${n})`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `${proposed} (${Date.now()})`;
+}
+
 export function useWorkbook(): WorkbookApi {
   const engineRef = useRef<CalcEngine | null>(null);
   if (engineRef.current === null) {
@@ -202,15 +213,22 @@ export function useWorkbook(): WorkbookApi {
   const loadSheet = useCallback(
     (sheet: Sheet) => {
       pushHistory();
-      getEngine().loadSheet(sheet);
-      setWorkbook((wb) => {
-        const exists = wb.sheets.some((s) => s.id === sheet.id);
+      const wb = workbookRef.current;
+      const sameId = wb.sheets.find((s) => s.id === sheet.id);
+      // Same-id replacement keeps the existing name; otherwise dedupe the
+      // incoming name against existing sheets so the calc engine (keyed by
+      // name) doesn't conflate two workbook sheets.
+      const finalName = sameId ? sheet.name : uniqueSheetName(sheet.name, wb.sheets);
+      const finalSheet: Sheet = finalName === sheet.name ? sheet : { ...sheet, name: finalName };
+      getEngine().loadSheet(finalSheet);
+      setWorkbook((cur) => {
+        const exists = cur.sheets.some((s) => s.id === finalSheet.id);
         const sheets = exists
-          ? wb.sheets.map((s) => (s.id === sheet.id ? sheet : s))
-          : [...wb.sheets, sheet];
-        return { ...wb, sheets };
+          ? cur.sheets.map((s) => (s.id === finalSheet.id ? finalSheet : s))
+          : [...cur.sheets, finalSheet];
+        return { ...cur, sheets };
       });
-      setActiveSheetId(sheet.id);
+      setActiveSheetId(finalSheet.id);
       setVersion((v) => v + 1);
     },
     [pushHistory]
@@ -218,6 +236,12 @@ export function useWorkbook(): WorkbookApi {
 
   const replaceWorkbook = useCallback(
     (wb: Workbook) => {
+      // Discard undo history that belonged to the previous workbook so a
+      // post-replace Undo can't resurrect a snapshot of a different workbook
+      // (and have autosave persist the resurrection).
+      pastRef.current = [];
+      futureRef.current = [];
+      setHistoryTick((t) => t + 1);
       reloadEngine(wb);
       setWorkbook(wb);
       setActiveSheetId(wb.sheets[0]?.id ?? "sheet-1");

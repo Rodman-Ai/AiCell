@@ -200,4 +200,58 @@ describe("AI endpoints", () => {
     const r2 = await disabled.request("/health");
     expect(await r2.json()).toEqual({ ok: true, ai: false, agent: false });
   });
+
+  describe("auth", () => {
+    it("rejects /workbooks without token when authToken is set", async () => {
+      const guarded = createApp({ store: new FileStore(dir), authToken: "secret-xyz" });
+      const res = await guarded.request("/workbooks");
+      expect(res.status).toBe(401);
+    });
+
+    it("accepts /workbooks with correct bearer token", async () => {
+      const guarded = createApp({ store: new FileStore(dir), authToken: "secret-xyz" });
+      const res = await guarded.request("/workbooks", {
+        headers: { Authorization: "Bearer secret-xyz" },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("rejects /workbooks with wrong bearer token", async () => {
+      const guarded = createApp({ store: new FileStore(dir), authToken: "secret-xyz" });
+      const res = await guarded.request("/workbooks", {
+        headers: { Authorization: "Bearer wrong-token" },
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("/health stays public even with authToken set", async () => {
+      const guarded = createApp({ store: new FileStore(dir), authToken: "secret-xyz" });
+      const res = await guarded.request("/health");
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe("CORS", () => {
+    it("rejects unlisted origins", async () => {
+      const restricted = createApp({
+        store: new FileStore(dir),
+        allowedOrigins: ["https://allowed.example.com"],
+      });
+      const res = await restricted.request("/health", {
+        headers: { Origin: "https://evil.example.com" },
+      });
+      expect(res.headers.get("access-control-allow-origin")).toBeFalsy();
+    });
+
+    it("reflects an allowlisted origin", async () => {
+      const restricted = createApp({
+        store: new FileStore(dir),
+        allowedOrigins: ["https://allowed.example.com"],
+      });
+      const res = await restricted.request("/health", {
+        headers: { Origin: "https://allowed.example.com" },
+      });
+      expect(res.headers.get("access-control-allow-origin")).toBe("https://allowed.example.com");
+    });
+  });
 });

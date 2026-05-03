@@ -66,15 +66,25 @@ If your repo is forked under a different name, update `VITE_BASE` in the workflo
 
 ### Pages with a hosted backend
 
-To run a real (non-demo) deployment on Pages, host the API somewhere reachable (Fly.io, Railway, Render, etc.) and set `VITE_API_BASE` to its absolute URL in the workflow:
+To run a real (non-demo) deployment on Pages, host the API somewhere reachable (Fly.io, Railway, Render, etc.) and set `VITE_API_BASE` to its absolute URL in the workflow. **Always set both env vars below on the API server before exposing it publicly** — without them the API is open to the world and any origin can spend your Anthropic key.
 
 ```yaml
+# .github/workflows/pages.yml
 env:
   VITE_BASE: /AiCell/
   VITE_API_BASE: https://api.example.com
+  VITE_API_TOKEN: ${{ secrets.AICELL_API_TOKEN }}   # must match server
 ```
 
-The API service must enable CORS for the Pages origin (it already does — see `services/api/src/app.ts`).
+```sh
+# On the API host
+ANTHROPIC_API_KEY=sk-ant-...
+AICELL_ALLOWED_ORIGINS=https://rodman-ai.github.io   # comma-separated allowlist
+AICELL_API_TOKEN=$(openssl rand -hex 32)             # bearer token shared with web client
+pnpm dev:api
+```
+
+CORS defaults to localhost-only (`5173`/`4173`); requests from any other origin are dropped. The bearer token gates `/workbooks/*` and `/ai/*` (but not `/health`). Both can be omitted in dev.
 
 ## Differentiation thesis
 

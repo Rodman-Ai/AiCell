@@ -88,6 +88,78 @@ export const TOOL_DEFS: Anthropic.Tool[] = [
 
 const MUTATING_TOOLS = new Set(["set_cell", "add_sheet", "create_chart"]);
 
+const MAX_GRID_DIM = 1_000_000;
+const MAX_FORECAST_PERIODS = 240;
+const VALID_CHART_TYPES = new Set(["bar", "line", "area", "pie", "scatter"]);
+
+/**
+ * Validate the model's tool_use input before we record it as a plan step
+ * or hand it to a server-side helper. The model is generally well-behaved,
+ * but a malformed call (non-numeric coords, huge `periods`, etc.) can
+ * corrupt client row counts or burn server cycles.
+ */
+function validateToolInput(
+  name: string,
+  args: Record<string, unknown>
+): { ok: true; step?: PlanStep; forecast?: { sheet: string; range: string; periods: number } } | { ok: false; reason: string } {
+  const isStr = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length < 256;
+  const isInt = (v: unknown): v is number =>
+    typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= MAX_GRID_DIM;
+
+  if (name === "set_cell") {
+    if (!isStr(args.sheet)) return { ok: false, reason: "sheet must be a non-empty string" };
+    if (!isInt(args.row)) return { ok: false, reason: `row must be an integer in [0, ${MAX_GRID_DIM}]` };
+    if (!isInt(args.col)) return { ok: false, reason: `col must be an integer in [0, ${MAX_GRID_DIM}]` };
+    if (typeof args.raw !== "string") return { ok: false, reason: "raw must be a string" };
+    if ((args.raw as string).length > 16_000) return { ok: false, reason: "raw too long (>16k chars)" };
+    return {
+      ok: true,
+      step: { tool: "set_cell", args: { sheet: args.sheet, row: args.row, col: args.col, raw: args.raw } },
+    };
+  }
+  if (name === "add_sheet") {
+    if (!isStr(args.name)) return { ok: false, reason: "name must be a non-empty string" };
+    return { ok: true, step: { tool: "add_sheet", args: { name: args.name } } };
+  }
+  if (name === "create_chart") {
+    if (!isStr(args.sheet)) return { ok: false, reason: "sheet must be a non-empty string" };
+    if (!isStr(args.title)) return { ok: false, reason: "title must be a non-empty string" };
+    if (typeof args.type !== "string" || !VALID_CHART_TYPES.has(args.type)) {
+      return { ok: false, reason: `type must be one of ${[...VALID_CHART_TYPES].join(", ")}` };
+    }
+    if (!isStr(args.range)) return { ok: false, reason: "range must be a non-empty A1 string" };
+    const chartType = args.type as "bar" | "line" | "area" | "pie" | "scatter";
+    return {
+      ok: true,
+      step: {
+        tool: "create_chart",
+        args: {
+          sheet: args.sheet,
+          title: args.title,
+          type: chartType,
+          range: args.range,
+        },
+      },
+    };
+  }
+  if (name === "forecast") {
+    if (!isStr(args.sheet)) return { ok: false, reason: "sheet must be a non-empty string" };
+    if (!isStr(args.range)) return { ok: false, reason: "range must be a non-empty A1 string" };
+    if (typeof args.periods !== "number" || !Number.isInteger(args.periods) || args.periods < 1 || args.periods > MAX_FORECAST_PERIODS) {
+      return { ok: false, reason: `periods must be an integer in [1, ${MAX_FORECAST_PERIODS}]` };
+    }
+    return {
+      ok: true,
+      forecast: { sheet: args.sheet, range: args.range, periods: args.periods },
+    };
+  }
+  if (name === "audit_formulas") {
+    // No required arguments — the tool reads the attached workbook.
+    return { ok: true };
+  }
+  return { ok: false, reason: `unknown tool: ${name}` };
+}
+
 const AGENT_SYSTEM = [
   "You are AiCell, an agentic spreadsheet assistant. You see a snapshot of the user's workbook.",
   "Plan and execute changes through the provided tools.",
@@ -169,9 +241,19 @@ export async function runAgent(
       if (block.type === "text") {
         turnText += block.text;
       } else if (block.type === "tool_use") {
-        const args = block.input as Record<string, unknown>;
-        if (MUTATING_TOOLS.has(block.name)) {
-          plan.push({ tool: block.name, args } as PlanStep);
+        const rawArgs = (block.input ?? {}) as Record<string, unknown>;
+        const validation = validateToolInput(block.name, rawArgs);
+        if (!validation.ok) {
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: block.id,
+            content: `Invalid arguments for ${block.name}: ${validation.reason}`,
+            is_error: true,
+          });
+          continue;
+        }
+        if (MUTATING_TOOLS.has(block.name) && validation.step) {
+          plan.push(validation.step);
           toolResults.push({
             type: "tool_result",
             tool_use_id: block.id,
@@ -184,7 +266,7 @@ export async function runAgent(
             tool_use_id: block.id,
             content: JSON.stringify({ issues }),
           });
-        } else if (block.name === "forecast") {
+        } else if (block.name === "forecast" && validation.forecast) {
           if (!req.workbook) {
             toolResults.push({
               type: "tool_result",
@@ -193,10 +275,7 @@ export async function runAgent(
               is_error: true,
             });
           } else {
-            const result = forecastFromWorkbook(
-              req.workbook,
-              args as { sheet: string; range: string; periods: number }
-            );
+            const result = forecastFromWorkbook(req.workbook, validation.forecast);
             toolResults.push({
               type: "tool_result",
               tool_use_id: block.id,

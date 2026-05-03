@@ -110,12 +110,14 @@ export function Grid({ api, selection, onSelect, onSortColumn, onRemoveDupesInCo
         beginEdit(anchor.row, anchor.col);
         e.preventDefault();
       } else if (e.key === "Delete" || e.key === "Backspace") {
-        // Clear all selected cells
+        // Clear all selected cells as one batch -> one undo step.
+        const edits = [];
         for (let r = sel.startRow; r <= sel.endRow; r++) {
           for (let c = sel.startCol; c <= sel.endCol; c++) {
-            setCell(r, c, "");
+            edits.push({ row: r, col: c, raw: "" });
           }
         }
+        api.setCellsOnSheetBatch(activeSheet.name, edits);
         e.preventDefault();
       } else if (e.key === "Home") {
         if (e.ctrlKey || e.metaKey) moveAnchor(0, 0);

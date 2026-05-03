@@ -13,7 +13,28 @@ export type AppDeps = {
   claude?: ClaudeClient | null;
   /** Optional — if absent, /ai/agent returns 503. */
   agent?: AgentLLM | null;
+  /**
+   * Allowed CORS origins. If undefined, defaults to common dev origins
+   * only; pass an explicit list (e.g. `["https://my-app.example.com"]`)
+   * before exposing the API publicly. Pass `["*"]` to opt into the old
+   * "reflect any origin" behavior — never recommended for hosted use.
+   */
+  allowedOrigins?: string[];
+  /**
+   * If set, every request to `/workbooks/*` and `/ai/*` must carry an
+   * `Authorization: Bearer <token>` header matching this value. Leave
+   * unset for local dev; required for any hosted deployment that hands
+   * out a real Anthropic key.
+   */
+  authToken?: string;
 };
+
+const DEFAULT_ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  "http://localhost:4173",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:4173",
+];
 
 const VALID_FNS: ReadonlySet<string> = new Set([
   "AI",
@@ -28,7 +49,25 @@ const VALID_FNS: ReadonlySet<string> = new Set([
 export function createApp(deps: AppDeps) {
   const app = new Hono();
 
-  app.use("*", cors({ origin: (origin) => origin ?? "*" }));
+  const allowed = deps.allowedOrigins ?? DEFAULT_ALLOWED_ORIGINS;
+  const allowAny = allowed.length === 1 && allowed[0] === "*";
+  app.use("*", cors({
+    origin: (origin) => {
+      if (allowAny) return origin ?? "*";
+      if (!origin) return null;
+      return allowed.includes(origin) ? origin : null;
+    },
+    credentials: !allowAny,
+  }));
+
+  // Bearer-token gate on everything except /health (so liveness checks
+  // stay simple). Constant-time compare to avoid timing oracles.
+  if (deps.authToken) {
+    const expected = deps.authToken;
+    app.use("/workbooks/*", async (c, next) => requireToken(c, expected, next));
+    app.use("/workbooks", async (c, next) => requireToken(c, expected, next));
+    app.use("/ai/*", async (c, next) => requireToken(c, expected, next));
+  }
 
   app.get("/health", (c) =>
     c.json({ ok: true, ai: !!deps.claude, agent: !!deps.agent })
@@ -135,6 +174,28 @@ export function createApp(deps: AppDeps) {
   });
 
   return app;
+}
+
+async function requireToken(
+  c: import("hono").Context,
+  expected: string,
+  next: import("hono").Next
+) {
+  const header = c.req.header("Authorization") ?? "";
+  const presented = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (!constantTimeEq(presented, expected)) {
+    return c.json({ error: "unauthorized" }, 401);
+  }
+  await next();
+}
+
+function constantTimeEq(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
 }
 
 export { FileStore };

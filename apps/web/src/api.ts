@@ -11,17 +11,28 @@ const RAW_BASE = import.meta.env.VITE_API_BASE;
 const BASE = RAW_BASE === undefined ? "/api" : RAW_BASE;
 export const isOffline = BASE === "";
 
+/**
+ * Optional bearer token for authenticated deployments. Set via
+ * VITE_API_TOKEN at build time. Empty in dev and in the Pages demo
+ * build — the API server matches that with no auth requirement.
+ */
+const API_TOKEN = (import.meta.env.VITE_API_TOKEN as string | undefined) ?? "";
+
+function authHeaders(): Record<string, string> {
+  return API_TOKEN ? { Authorization: `Bearer ${API_TOKEN}` } : {};
+}
+
 export type WorkbookSummary = { id: string; name: string; updatedAt: number };
 
 export async function listWorkbooks(): Promise<WorkbookSummary[]> {
-  const res = await fetch(`${BASE}/workbooks`);
+  const res = await fetch(`${BASE}/workbooks`, { headers: authHeaders() });
   if (!res.ok) throw new Error(`list failed: ${res.status}`);
   const body = (await res.json()) as { workbooks: WorkbookSummary[] };
   return body.workbooks;
 }
 
 export async function loadWorkbook(id: string): Promise<Workbook | null> {
-  const res = await fetch(`${BASE}/workbooks/${encodeURIComponent(id)}`);
+  const res = await fetch(`${BASE}/workbooks/${encodeURIComponent(id)}`, { headers: authHeaders() });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`load failed: ${res.status}`);
   const body = (await res.json()) as { workbook: Workbook };
@@ -31,7 +42,7 @@ export async function loadWorkbook(id: string): Promise<Workbook | null> {
 export async function saveWorkbook(workbook: Workbook): Promise<{ updatedAt: number }> {
   const res = await fetch(`${BASE}/workbooks/${encodeURIComponent(workbook.id)}`, {
     method: "PUT",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...authHeaders() },
     body: JSON.stringify({ workbook }),
   });
   if (!res.ok) throw new Error(`save failed: ${res.status}`);
@@ -51,7 +62,7 @@ export async function callAiCell(req: {
 }): Promise<string> {
   const res = await fetch(`${BASE}/ai/cell`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...authHeaders() },
     body: JSON.stringify(req),
   });
   if (res.status === 503) throw new Error("AI is not configured (no API key)");
@@ -68,7 +79,7 @@ export async function callAiChat(req: {
 }): Promise<string> {
   const res = await fetch(`${BASE}/ai/chat`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...authHeaders() },
     body: JSON.stringify(req),
   });
   if (res.status === 503) throw new Error("AI is not configured (no API key)");
@@ -98,7 +109,7 @@ export async function callAiAgent(req: {
 }): Promise<AgentResult> {
   const res = await fetch(`${BASE}/ai/agent`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...authHeaders() },
     body: JSON.stringify(req),
   });
   if (res.status === 503) throw new Error("AI is not configured (no API key)");
