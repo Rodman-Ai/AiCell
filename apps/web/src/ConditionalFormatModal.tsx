@@ -6,6 +6,7 @@ import type {
   RangeBounds,
 } from "@aicell/shared";
 import { rangeBoundsToA1 } from "./conditional";
+import { useReturnFocusOnClose } from "./useReturnFocusOnClose";
 
 type ConditionType = CFCondition["type"];
 
@@ -39,6 +40,7 @@ const CONDITION_LABELS: { value: ConditionType; label: string }[] = [
 ];
 
 export function ConditionalFormatModal({ rules, selection, onAdd, onRemove, onClose }: Props) {
+  useReturnFocusOnClose();
   const [conditionType, setConditionType] = useState<ConditionType>("greaterThan");
   const [valueA, setValueA] = useState("0");
   const [valueB, setValueB] = useState("100");

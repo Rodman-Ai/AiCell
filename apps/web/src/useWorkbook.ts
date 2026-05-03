@@ -299,6 +299,11 @@ export function useWorkbook(): WorkbookApi {
   const setCellsOnSheetBatch = useCallback(
     (sheetName: string, edits: CellEdit[]) => {
       if (edits.length === 0) return;
+      const targetSheet = workbookRef.current.sheets.find((s) => s.name === sheetName);
+      if (!targetSheet) {
+        console.warn(`setCellsOnSheetBatch: unknown sheet "${sheetName}", skipping`);
+        return;
+      }
       pushHistory();
       setWorkbook((wb) => {
         const sheets = wb.sheets.map((s) => {

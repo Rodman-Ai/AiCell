@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Sheet } from "@aicell/shared";
 import { cellKey } from "@aicell/shared";
 import type { CellEdit } from "./useWorkbook";
+import { useReturnFocusOnClose } from "./useReturnFocusOnClose";
 
 type Props = {
   sheet: Sheet;
@@ -11,6 +12,7 @@ type Props = {
 };
 
 export function FindReplace({ sheet, onClose, onJumpTo, onApply }: Props) {
+  useReturnFocusOnClose();
   const [find, setFind] = useState("");
   const [replace, setReplace] = useState("");
   const [matchCase, setMatchCase] = useState(false);

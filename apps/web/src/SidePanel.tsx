@@ -58,8 +58,13 @@ export function SidePanel({
       content: t.content,
     }));
 
+    // Capture the workbook the user actually saw when they hit Send. If
+    // they edit cells while the agent is thinking, the request still
+    // matches the transcript instead of drifting to mid-edit state.
+    const workbookAtPrompt = workbook;
+
     try {
-      const result = await callAiAgent({ messages: transcript, workbook });
+      const result = await callAiAgent({ messages: transcript, workbook: workbookAtPrompt });
       setTurns((cur) => [
         ...cur,
         {
